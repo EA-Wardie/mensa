@@ -1,6 +1,6 @@
 # mensa
 
-Terminal app built with `@opentui/core` and `nanostores` on Bun. Linux only. The README documents every feature, key and config option.
+Terminal database client, Postgres only for now, built with `@opentui/core` and `nanostores` on Bun. Linux only. The README documents every feature, key and config option.
 
 ## Commands
 
@@ -10,13 +10,21 @@ Terminal app built with `@opentui/core` and `nanostores` on Bun. Linux only. The
 
 ## Architecture
 
-- `src/main.ts` creates the renderer via `makeApp`, registers the keyboard shortcuts and lays out the root `App`.
+- `src/main.ts` creates the renderer via `makeApp` and registers the keyboard shortcuts. It subscribes to `$screen` and swaps the root `App`'s child between `ConnectionsScreen` and `DatabaseScreen`, destroying the old one, so each screen starts fresh.
+- `DatabaseScreen` lays out `TableSidebar | TableTabs, DataGrid, DatabaseFooter`.
 - `lib/context.ts` exports the renderer as `ctx`, which every component imports.
-- `lib/store.ts` holds all shared state as nanostores atoms, such as `$menuOpen`, `$dialogOpen` and `$notice` for user facing messages. Components subscribe to atoms directly.
-- Components are classes with a static `make()` returning an OpenTUI renderable, built imperatively. Lists that can grow large should extend `core.Renderable` and draw only the visible rows in `renderSelf`.
-- `lib/shortcuts.ts` has one `SHORTCUTS` table of keys, aliases and actions. Menus and buttons call `SHORTCUTS.x.run()` and `shortcutLabel()`, so new actions belong in this table. Shortcuts are ignored while a dialog, menu or input is focused.
-- `lib/config.ts` loads `~/.config/mensa/config.toml` with top level await and derives the whole theme from a few base colours.
+- `lib/store.ts` holds all shared state as nanostores atoms: `$screen`, `$connections`, `$selectedConnection`, `$connecting`, `$connection`, `$tables`, `$selectedTable`, `$openTables` (tab order), `$activeTable`, `$tableData` (a `TableData` union of loading, loaded and error per open table), the computed `$activeTableData`, `$dialogOpen` and `$notice` for footer messages. `$connecting` holds the connection being made. Components subscribe to atoms directly and pass the unbinds to `unbindOnDestroy()` from `lib/lifetime.ts`, since screens are destroyed.
+- `lib/database.ts` is the only module that touches the `Bun.SQL` client: `openClient`, `loadTable`, `forgetTable` and `closeClient`. Values are always parameters. Table names are quoted with `quoteIdentifier` and passed through `sql.unsafe`, because `sql()` splits identifiers on dots.
+- `lib/session.ts` has `connect` and `disconnect`, which open or close the client and set the store, the remembered connection and the tabs. They clear `$notice`, and changing screens doesn't. `Q` only calls `closeClient` and `flushState`, so it keeps the remembered connection and doesn't rebuild the start screen.
+- `lib/tabs.ts` has `openTable`, `closeTable`, `cycleTable`, `restoreTabs` and `resetTabs`. Each saves the tabs itself, and a tab loads the first time it becomes active.
+- Components are classes with a static `make()` returning an OpenTUI renderable, built imperatively. `List<T>` and `DataGrid` instead extend `core.Renderable` and draw only the visible rows in `renderSelf`, so large tables stay fast. `List` takes its items and selection as atoms. `DataGrid` formats and fits a table's cells once per load with `lib/format.ts`, caching by the rows array, and exposes scroll methods through `DataGrid.current` for the shortcuts.
+- `Confirmation.make()` opens a modal dialog on `ctx.root` and sets `$dialogOpen`, which pauses the global shortcuts until it closes. `Return` confirms and `Escape` cancels. `C` and `Q` use it.
+- `TableTabs` holds a `TabBar` renderable that draws fixed width tabs with a close icon, scrolls the fewest tabs needed to keep the active one in view, and maps clicks to tabs with `hitAt()`. The rule under the tabs is drawn by `DataGrid`, so it can join the column separators.
+- `lib/shortcuts.ts` has one `SHORTCUTS` table of keys, aliases, the `screen` they apply to and actions. A shortcut without a `screen` applies to every screen. Buttons call `SHORTCUTS.x.run()` and `shortcutLabel()`, so new actions belong in this table. Shortcuts are ignored while a dialog is open or an input is focused.
+- `lib/config.ts` loads `~/.config/mensa/config.toml` with top level await. It parses `connections`, `row_limit` and `double_click_timeout`, and derives the whole theme from a few base colours.
 - `lib/consts.ts` holds paths and fixed values.
+- `lib/state.ts` keeps app state in `~/.local/state/mensa/state.json`, loaded with top level await: the last connection's name and each connection's open and active tabs. `connect` saves the name, `disconnect` clears it, and `main.ts` reconnects on start. Saves are debounced by `STATE_SAVE_DELAY`, and `Q` calls `flushState()` before exiting.
+- `NoticeText` is the footer line shared by both screens: `$notice` in the danger colour, or else a fallback text.
 - `lib/log.ts` writes errors as JSONL, one file per day, to `~/.local/state/mensa/logs`. Use `logError` and set `$notice` for user facing failures.
 
 ## Conventions

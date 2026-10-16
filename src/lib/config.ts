@@ -1,6 +1,12 @@
 import { resolve } from "node:path";
 import { parseColor, RGBA } from "@opentui/core";
-import { HOME_DIRECTORY, USER_CONFIG_PATH } from "./consts";
+import {
+	DEFAULT_DOUBLE_CLICK_TIMEOUT,
+	DEFAULT_PORT,
+	DEFAULT_ROW_LIMIT,
+	HOME_DIRECTORY,
+	USER_CONFIG_PATH,
+} from "./consts";
 import { logError, setLogsPath } from "./log";
 
 const THEME_KEYS = [
@@ -39,13 +45,38 @@ export interface ThemeType {
 	danger_pressed: RGBA;
 }
 
+const SSL_MODES = [
+	"disable",
+	"allow",
+	"prefer",
+	"require",
+	"verify-ca",
+	"verify-full",
+] as const;
+
+export type SslMode = (typeof SSL_MODES)[number];
+
+export interface ConnectionConfig {
+	name: string;
+	url?: string;
+	host?: string;
+	port?: number;
+	user?: string;
+	password?: string;
+	database?: string;
+	ssl?: SslMode;
+}
+
 interface ConfigFile {
 	logs_path?: string;
+	row_limit?: unknown;
+	double_click_timeout?: unknown;
+	connections?: unknown;
 	theme?: unknown;
 }
 
 async function loadUserConfig(): Promise<ConfigFile> {
-	const file = Bun.file(USER_CONFIG_PATH);
+	const file: Bun.BunFile = Bun.file(USER_CONFIG_PATH);
 
 	if (!(await file.exists())) {
 		return {};
@@ -76,6 +107,172 @@ const userConfig: ConfigFile = await loadUserConfig();
 
 if (userConfig.logs_path) {
 	setLogsPath(normalizePath(userConfig.logs_path));
+}
+
+function isPositiveInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function parsePositiveInteger(
+	key: string,
+	value: unknown,
+	fallback: number,
+): number {
+	if (value === undefined) {
+		return fallback;
+	}
+
+	if (isPositiveInteger(value)) {
+		return value;
+	}
+
+	logError(new Error(`Invalid ${key}: ${String(value)}`));
+
+	return fallback;
+}
+
+export const doubleClickTimeout: number = parsePositiveInteger(
+	"double_click_timeout",
+	userConfig.double_click_timeout,
+	DEFAULT_DOUBLE_CLICK_TIMEOUT,
+);
+
+export const rowLimit: number = parsePositiveInteger(
+	"row_limit",
+	userConfig.row_limit,
+	DEFAULT_ROW_LIMIT,
+);
+
+function optionalString(
+	entry: Record<string, unknown>,
+	key: string,
+): string | undefined {
+	const value: unknown = entry[key];
+
+	return typeof value === "string" && value ? value : undefined;
+}
+
+function parseConnection(
+	value: unknown,
+	index: number,
+): ConnectionConfig | undefined {
+	if (!isTable(value)) {
+		logError(new Error(`Invalid connection #${index + 1}: ${String(value)}`));
+
+		return undefined;
+	}
+
+	const name: string | undefined = optionalString(value, "name");
+	const url: string | undefined = optionalString(value, "url");
+	const host: string | undefined = optionalString(value, "host");
+	// A url carries its own port, which an explicit port option would override.
+	const port: unknown = value.port ?? (url ? undefined : DEFAULT_PORT);
+	const ssl: unknown = value.ssl;
+
+	if (!name) {
+		logError(new Error(`Connection #${index + 1} has no name`));
+
+		return undefined;
+	}
+
+	if (!url && !host) {
+		logError(new Error(`Connection "${name}" needs a url or a host`));
+
+		return undefined;
+	}
+
+	if (port !== undefined && !isPositiveInteger(port)) {
+		logError(new Error(`Invalid port for "${name}": ${String(port)}`));
+
+		return undefined;
+	}
+
+	if (
+		ssl !== undefined &&
+		!(typeof ssl === "string" && isOneOf(SSL_MODES, ssl))
+	) {
+		logError(new Error(`Invalid ssl for "${name}": ${String(ssl)}`));
+
+		return undefined;
+	}
+
+	const connection: ConnectionConfig = { name: name };
+	const user: string | undefined = optionalString(value, "user");
+	const password: string | undefined = optionalString(value, "password");
+	const database: string | undefined = optionalString(value, "database");
+
+	if (port !== undefined) connection.port = port;
+	if (url) connection.url = url;
+	if (host) connection.host = host;
+	if (user) connection.user = user;
+	if (password) connection.password = password;
+	if (database) connection.database = database;
+	if (ssl) connection.ssl = ssl;
+
+	return connection;
+}
+
+function parseConnections(value: unknown): ConnectionConfig[] {
+	if (value === undefined) {
+		return [];
+	}
+
+	if (!Array.isArray(value)) {
+		logError(new Error(`Invalid connections: ${String(value)}`));
+
+		return [];
+	}
+
+	const parsed: ConnectionConfig[] = [];
+	const names: Set<string> = new Set<string>();
+
+	value.forEach((entry: unknown, index: number): void => {
+		const connection: ConnectionConfig | undefined = parseConnection(
+			entry,
+			index,
+		);
+
+		if (!connection) {
+			return;
+		}
+
+		// Saved state is keyed by name, so names must be unique.
+		if (names.has(connection.name)) {
+			logError(new Error(`Duplicate connection name "${connection.name}"`));
+
+			return;
+		}
+
+		names.add(connection.name);
+		parsed.push(connection);
+	});
+
+	return parsed;
+}
+
+export const connections: ConnectionConfig[] = parseConnections(
+	userConfig.connections,
+);
+
+export function describeConnection(connection: ConnectionConfig): string {
+	if (connection.url) {
+		try {
+			const url: URL = new URL(connection.url);
+
+			if (connection.port !== undefined) {
+				url.port = String(connection.port);
+			}
+
+			return `${url.username ? `${url.username}@` : ""}${url.host}${url.pathname}`;
+		} catch {
+			return connection.url;
+		}
+	}
+
+	const user: string = connection.user ? `${connection.user}@` : "";
+	const database: string = connection.database ? `/${connection.database}` : "";
+
+	return `${user}${connection.host}:${connection.port ?? DEFAULT_PORT}${database}`;
 }
 
 const COLOR_PATTERN: RegExp =
@@ -125,7 +322,7 @@ function isLight(color: RGBA): boolean {
 	return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b > 0.5;
 }
 
-function isTable(value: unknown): value is Record<string, unknown> {
+export function isTable(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

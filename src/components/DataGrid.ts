@@ -1,0 +1,681 @@
+import * as core from "@opentui/core";
+import { theme } from "../lib/config";
+import { MAX_COLUMN_WIDTH } from "../lib/consts";
+import { ctx } from "../lib/context";
+import { fitText, formatValue, NULL_TEXT } from "../lib/format";
+import { unbindOnDestroy } from "../lib/lifetime";
+import { clamp } from "../lib/math";
+import {
+	$activeTable,
+	$activeTableData,
+	$openTables,
+	$tableData,
+	type TableData,
+} from "../lib/store";
+
+type Cell = string | null;
+
+// Column names and cells are fitted to their column once per load, so a frame
+// only draws them.
+interface Grid {
+	columns: string[];
+	cells: Cell[][];
+	widths: number[];
+	totalWidth: number;
+}
+
+interface Position {
+	x: number;
+	y: number;
+}
+
+interface Thumb {
+	start: number;
+	width: number;
+	track: number;
+	max: number;
+}
+
+// The top rule, the column names and the rule under them.
+const HEADER_HEIGHT: number = 3;
+
+const CELL_PADDING: number = 1;
+
+const SEPARATOR: string = "│";
+
+const RULE: string = "─";
+
+const TOP_TEE: string = "┬";
+
+const CROSS: string = "┼";
+
+const BOTTOM_TEE: string = "┴";
+
+const SCROLL_STEP_X: number = 4;
+
+// A lower half block keeps the horizontal thumb as thin as the vertical one,
+// which a full cell high ScrollBarRenderable can't do.
+const THUMB: string = "▄";
+
+const GRIDS: WeakMap<unknown[][], Grid> = new WeakMap<unknown[][], Grid>();
+
+function columnSpan(width: number): number {
+	return width + CELL_PADDING * 2 + 1;
+}
+
+function makeGrid(columns: string[], rows: unknown[][]): Grid {
+	const cells: Cell[][] = rows.map((row: unknown[]): Cell[] =>
+		row.map(
+			(value: unknown): Cell =>
+				value === null || value === undefined ? null : formatValue(value),
+		),
+	);
+
+	const widths: number[] = columns.map(
+		(column: string, index: number): number => {
+			let width: number = Bun.stringWidth(column);
+
+			for (const row of cells) {
+				const cell: Cell | undefined = row[index];
+
+				width = Math.max(
+					width,
+					cell === null ? NULL_TEXT.length : Bun.stringWidth(cell ?? ""),
+				);
+
+				if (width >= MAX_COLUMN_WIDTH) {
+					return MAX_COLUMN_WIDTH;
+				}
+			}
+
+			return width;
+		},
+	);
+
+	const totalWidth: number = widths.reduce(
+		(total: number, width: number): number => total + columnSpan(width),
+		0,
+	);
+	const fit: (text: string, index: number) => string = (
+		text: string,
+		index: number,
+	): string => fitText(text, widths[index] ?? 0);
+
+	return {
+		columns: columns.map(fit),
+		cells: cells.map((row: Cell[]): Cell[] =>
+			row.map(
+				(cell: Cell, index: number): Cell =>
+					cell === null ? null : fit(cell, index),
+			),
+		),
+		widths,
+		totalWidth,
+	};
+}
+
+function gridFor(data: TableData | undefined): Grid | null {
+	if (data?.status !== "loaded") {
+		return null;
+	}
+
+	let grid: Grid | undefined = GRIDS.get(data.rows);
+
+	if (!grid) {
+		grid = makeGrid(data.columns, data.rows);
+		GRIDS.set(data.rows, grid);
+	}
+
+	return grid;
+}
+
+export class DataGrid extends core.Renderable {
+	public static current: DataGrid | null = null;
+
+	private _vertical: core.ScrollBarRenderable;
+	private _table: string | null = null;
+	private _data: TableData | undefined = undefined;
+	private _grid: Grid | null = null;
+	private _offset: Position = { x: 0, y: 0 };
+	private _positions: Map<string, Position> = new Map<string, Position>();
+	private _hovered: number | null = null;
+	private _mouseY: number | null = null;
+	private _thumbGrab: number | null = null;
+
+	constructor(options: core.RenderableOptions<DataGrid>) {
+		super(ctx, {
+			flexGrow: 1,
+			width: "100%",
+			...options,
+		});
+
+		this._vertical = new core.ScrollBarRenderable(ctx, {
+			orientation: "vertical",
+			position: "absolute",
+			top: HEADER_HEIGHT,
+			right: 0,
+			bottom: 0,
+			trackOptions: {
+				foregroundColor: theme.scrollbar_thumb,
+				backgroundColor: theme.scrollbar_track,
+			},
+			onChange: (position: number): void => {
+				this.scrollTo({ x: this._offset.x, y: position });
+			},
+		});
+
+		this._vertical.focusable = false;
+
+		this.add(this._vertical);
+		this.registerStoreEvents();
+
+		DataGrid.current = this;
+	}
+
+	public static make(options: core.RenderableOptions<DataGrid> = {}): DataGrid {
+		return new this(options);
+	}
+
+	private get scrollsX(): boolean {
+		return (this._grid?.totalWidth ?? 0) > this.bodyWidth;
+	}
+
+	// The horizontal scrollbar takes a row only when the columns overflow.
+	private get bodyHeight(): number {
+		return Math.max(0, this.height - HEADER_HEIGHT - (this.scrollsX ? 1 : 0));
+	}
+
+	private get thumbY(): number {
+		return this.screenY + this.height - 1;
+	}
+
+	private get bodyWidth(): number {
+		return Math.max(0, this.width - 1);
+	}
+
+	private scrollRows(delta: number): void {
+		this.scrollTo({ x: this._offset.x, y: this._offset.y + delta });
+	}
+
+	public scrollPage(direction: number): void {
+		this.scrollRows(direction * Math.max(1, this.bodyHeight - 1));
+	}
+
+	public scrollToEdge(end: boolean): void {
+		this.scrollTo({
+			x: this._offset.x,
+			y: end ? Number.MAX_SAFE_INTEGER : 0,
+		});
+	}
+
+	public scrollColumns(direction: number): void {
+		const widths: number[] = this._grid?.widths ?? [];
+		let start: number = 0;
+
+		for (const width of widths) {
+			const end: number = start + columnSpan(width);
+
+			if (direction > 0 && start > this._offset.x) {
+				break;
+			}
+
+			if (direction < 0 && end >= this._offset.x) {
+				break;
+			}
+
+			start = end;
+		}
+
+		this.scrollTo({ x: start, y: this._offset.y });
+	}
+
+	protected override renderSelf(buffer: core.OptimizedBuffer): void {
+		const message: string | null = this.message();
+
+		if (message !== null) {
+			this.drawMessage(buffer, message);
+
+			return;
+		}
+
+		if (!this._grid) {
+			return;
+		}
+
+		this.drawRules(buffer);
+		buffer.pushScissorRect(
+			this.screenX,
+			this.screenY,
+			this.bodyWidth,
+			this.height,
+		);
+
+		this.drawHeader(buffer, this._grid);
+		this.drawRows(buffer, this._grid);
+		buffer.popScissorRect();
+		this.drawThumb(buffer);
+	}
+
+	private message(): string | null {
+		if (this._table === null) {
+			return "Open a table from the sidebar";
+		}
+
+		switch (this._data?.status) {
+			case undefined:
+			case "loading":
+				return "Loading…";
+			case "error":
+				return this._data.message;
+			default:
+				return null;
+		}
+	}
+
+	private drawMessage(buffer: core.OptimizedBuffer, message: string): void {
+		const width: number = Math.max(0, this.width - 2);
+		// Below the tabs, a rule separates the message from them.
+		const ruled: boolean = $openTables.get().length > 0;
+
+		if (width <= 0 || this.height <= (ruled ? 1 : 0)) {
+			return;
+		}
+
+		if (ruled) {
+			buffer.drawText(
+				RULE.repeat(this.width),
+				this.screenX,
+				this.screenY,
+				theme.border,
+			);
+		}
+
+		buffer.drawText(
+			fitText(message, width),
+			this.screenX + 1,
+			this.screenY + (ruled ? 1 : 0),
+			this._data?.status === "error" ? theme.danger : theme.muted,
+		);
+	}
+
+	// Full width, past the scrollbar column, to meet the tabs' border. The
+	// header then draws the column joins over them.
+	private drawRules(buffer: core.OptimizedBuffer): void {
+		const rule: string = RULE.repeat(this.width);
+
+		buffer.drawText(rule, this.screenX, this.screenY, theme.border);
+		buffer.drawText(rule, this.screenX, this.screenY + 2, theme.border);
+
+		const bottom: number | null = this.bottomRuleY();
+
+		if (bottom !== null) {
+			buffer.drawText(rule, this.screenX, bottom, theme.border);
+		}
+	}
+
+	// Closes off the last row when there is room for it under the rows.
+	private bottomRuleY(): number | null {
+		const shown: number = Math.min(
+			(this._grid?.cells.length ?? 0) - this._offset.y,
+			this.bodyHeight,
+		);
+
+		return shown > 0 && shown < this.bodyHeight
+			? this.screenY + HEADER_HEIGHT + shown
+			: null;
+	}
+
+	private drawHeader(buffer: core.OptimizedBuffer, grid: Grid): void {
+		const y: number = this.screenY + 1;
+
+		this.forEachColumn(
+			grid,
+			(index: number, x: number, separator: number): void => {
+				buffer.drawText(
+					grid.columns[index] ?? "",
+					x + CELL_PADDING,
+					y,
+					theme.fg,
+					undefined,
+					core.TextAttributes.BOLD,
+				);
+				buffer.drawText(TOP_TEE, separator, y - 1, theme.border);
+				buffer.drawText(SEPARATOR, separator, y, theme.border);
+				buffer.drawText(CROSS, separator, y + 1, theme.border);
+			},
+		);
+	}
+
+	private drawRows(buffer: core.OptimizedBuffer, grid: Grid): void {
+		const end: number = Math.min(
+			grid.cells.length,
+			this._offset.y + this.bodyHeight,
+		);
+
+		if (!grid.cells.length) {
+			buffer.drawText(
+				"No rows",
+				this.screenX + 1,
+				this.screenY + HEADER_HEIGHT,
+				theme.muted,
+			);
+
+			return;
+		}
+
+		const bottom: number | null = this.bottomRuleY();
+
+		if (bottom !== null) {
+			this.forEachColumn(
+				grid,
+				(_column: number, _x: number, separator: number): void => {
+					buffer.drawText(BOTTOM_TEE, separator, bottom, theme.border);
+				},
+			);
+		}
+
+		for (let index: number = this._offset.y; index < end; index++) {
+			const row: Cell[] | undefined = grid.cells[index];
+
+			if (!row) {
+				continue;
+			}
+
+			const y: number = this.screenY + HEADER_HEIGHT + index - this._offset.y;
+			if (index === this._hovered) {
+				buffer.fillRect(this.screenX, y, this.bodyWidth, 1, theme.hover);
+			}
+
+			this.forEachColumn(
+				grid,
+				(column: number, x: number, separator: number): void => {
+					const cell: Cell | undefined = row[column];
+
+					buffer.drawText(
+						cell ?? NULL_TEXT,
+						x + CELL_PADDING,
+						y,
+						cell === null ? theme.muted : theme.fg,
+						undefined,
+						cell === null
+							? core.TextAttributes.ITALIC
+							: core.TextAttributes.NONE,
+					);
+					buffer.drawText(SEPARATOR, separator, y, theme.border);
+				},
+			);
+		}
+	}
+
+	private forEachColumn(
+		grid: Grid,
+		draw: (index: number, x: number, separator: number) => void,
+	): void {
+		const right: number = this.screenX + this.bodyWidth;
+		let x: number = this.screenX - this._offset.x;
+
+		for (let index: number = 0; index < grid.widths.length; index++) {
+			const width: number = grid.widths[index] ?? 0;
+			const span: number = columnSpan(width);
+
+			if (x >= right) {
+				break;
+			}
+
+			if (x + span > this.screenX) {
+				draw(index, x, x + width + CELL_PADDING * 2);
+			}
+
+			x += span;
+		}
+	}
+
+	protected override onResize(width: number, height: number): void {
+		super.onResize(width, height);
+
+		this.sync();
+	}
+
+	protected override onMouseEvent(event: core.MouseEvent): void {
+		switch (event.type) {
+			case "down":
+				this.handleThumbDown(event);
+				break;
+			case "up":
+			case "drag-end":
+				this.releaseThumb();
+				break;
+			case "scroll":
+				this.handleScroll(event);
+				break;
+			case "drag":
+				if (this._thumbGrab !== null) {
+					this.dragThumb(event.x);
+				}
+
+				this._mouseY = event.target === this ? event.y : null;
+
+				this.updateHovered();
+				break;
+			case "over":
+			case "move":
+			case "out":
+				this._mouseY =
+					event.type === "out" || event.target !== this ? null : event.y;
+
+				this.updateHovered();
+				break;
+		}
+	}
+
+	private thumb(): Thumb | null {
+		const total: number = this._grid?.totalWidth ?? 0;
+		const track: number = this.bodyWidth;
+
+		if (total <= track || track <= 0) {
+			return null;
+		}
+
+		const width: number = Math.min(
+			track,
+			Math.max(1, Math.round((track * track) / total)),
+		);
+		const max: number = total - track;
+		const start: number = Math.round((this._offset.x / max) * (track - width));
+
+		return { start, width, track, max };
+	}
+
+	private drawThumb(buffer: core.OptimizedBuffer): void {
+		const thumb: Thumb | null = this.thumb();
+
+		if (!thumb) {
+			return;
+		}
+
+		const y: number = this.thumbY;
+		const color: core.RGBA =
+			this._thumbGrab === null ? theme.scrollbar_thumb : theme.fg;
+
+		for (let cell: number = 0; cell < thumb.width; cell++) {
+			buffer.setCellWithAlphaBlending(
+				this.screenX + thumb.start + cell,
+				y,
+				THUMB,
+				color,
+				theme.scrollbar_track,
+			);
+		}
+	}
+
+	private handleThumbDown(event: core.MouseEvent): void {
+		const thumb: Thumb | null = this.thumb();
+		const x: number = event.x - this.screenX;
+
+		if (
+			!thumb ||
+			event.button !== core.MouseButton.LEFT ||
+			event.y !== this.thumbY ||
+			x < 0 ||
+			x >= thumb.track
+		) {
+			return;
+		}
+
+		const onThumb: boolean = x >= thumb.start && x < thumb.start + thumb.width;
+
+		// Clicking the track centres the thumb on the click, then drags from there.
+		this._thumbGrab = onThumb ? x - thumb.start : Math.floor(thumb.width / 2);
+
+		this.dragThumb(event.x);
+	}
+
+	private dragThumb(screenX: number): void {
+		const thumb: Thumb | null = this.thumb();
+
+		if (!thumb || this._thumbGrab === null) {
+			return;
+		}
+
+		const room: number = thumb.track - thumb.width;
+		const start: number = clamp(
+			screenX - this.screenX - this._thumbGrab,
+			0,
+			room,
+		);
+
+		this.scrollTo({
+			x: room ? Math.round((start / room) * thumb.max) : 0,
+			y: this._offset.y,
+		});
+	}
+
+	private releaseThumb(): void {
+		if (this._thumbGrab === null) {
+			return;
+		}
+
+		this._thumbGrab = null;
+
+		this.requestRender();
+	}
+
+	private handleScroll(event: core.MouseEvent): void {
+		const direction: string | undefined = event.scroll?.direction;
+		const step: number = Math.max(1, Math.round(event.scroll?.delta ?? 1));
+		const horizontal: boolean =
+			direction === "left" ||
+			direction === "right" ||
+			(event.modifiers.shift && (direction === "up" || direction === "down"));
+		const sign: number = direction === "up" || direction === "left" ? -1 : 1;
+
+		if (horizontal) {
+			this.scrollTo({
+				x: this._offset.x + sign * step * SCROLL_STEP_X,
+				y: this._offset.y,
+			});
+		} else {
+			this.scrollRows(sign * step);
+		}
+	}
+
+	private rowAt(y: number): number | null {
+		const rows: number = this._grid?.cells.length ?? 0;
+		const relative: number = y - this.screenY - HEADER_HEIGHT;
+		const index: number = this._offset.y + relative;
+
+		return relative >= 0 && relative < this.bodyHeight && index < rows
+			? index
+			: null;
+	}
+
+	private updateHovered(): void {
+		const hovered: number | null =
+			this._mouseY === null ? null : this.rowAt(this._mouseY);
+
+		if (hovered === this._hovered) {
+			return;
+		}
+
+		this._hovered = hovered;
+
+		this.requestRender();
+	}
+
+	private sync(): void {
+		const grid: Grid | null = this._grid;
+
+		const bottom: number = this.scrollsX ? 1 : 0;
+
+		if (this._vertical.bottom !== bottom) {
+			this._vertical.bottom = bottom;
+		}
+
+		this._vertical.scrollSize = grid?.cells.length ?? 0;
+		this._vertical.viewportSize = this.bodyHeight;
+		this._vertical.slider.viewPortSize = Math.max(1, this.bodyHeight);
+
+		this.scrollTo(this._offset);
+	}
+
+	private scrollTo(position: Position): void {
+		const rows: number = this._grid?.cells.length ?? 0;
+		const width: number = this._grid?.totalWidth ?? 0;
+		const maxY: number = Math.max(0, rows - this.bodyHeight);
+		const maxX: number = Math.max(0, width - this.bodyWidth);
+
+		this._offset = {
+			x: clamp(position.x, 0, maxX),
+			y: clamp(position.y, 0, maxY),
+		};
+		this._vertical.scrollPosition = this._offset.y;
+
+		if (this._table !== null) {
+			this._positions.set(this._table, this._offset);
+		}
+
+		this.updateHovered();
+		this.requestRender();
+	}
+
+	private update(): void {
+		const table: string | null = $activeTable.get();
+		const data: TableData | undefined = $activeTableData.get();
+		const grid: Grid | null = gridFor(data);
+
+		if (table !== this._table) {
+			this._offset = (table && this._positions.get(table)) || { x: 0, y: 0 };
+		}
+
+		this._table = table;
+		this._data = data;
+		this._grid = grid;
+
+		for (const name of this._positions.keys()) {
+			if (!(name in $tableData.get())) {
+				this._positions.delete(name);
+			}
+		}
+
+		this.sync();
+	}
+
+	private registerStoreEvents(): void {
+		// $tableData as well as the active table's data, to forget the scroll
+		// positions of closed tabs.
+		unbindOnDestroy(
+			this,
+			$activeTable.listen((): void => {
+				this.update();
+			}),
+			$tableData.subscribe((): void => {
+				this.update();
+			}),
+			(): void => {
+				if (DataGrid.current === this) {
+					DataGrid.current = null;
+				}
+			},
+		);
+	}
+}

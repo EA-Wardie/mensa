@@ -47,13 +47,13 @@ EXEC_PATH="${BIN_DEST//%/%%}"
   echo "[Desktop Entry]"
   echo "Type=Application"
   echo "Name=Mensa"
-  echo "Comment=TODO"
+  echo "Comment=Terminal database client"
   echo "Exec=\"$EXEC_PATH\""
   if [[ -f "$ICON_DEST" ]]; then
     echo "Icon=$ICON_DEST"
   fi
   echo "Terminal=true"
-  echo "Categories=Utility;"
+  echo "Categories=Development;Database;"
 } > "$DESKTOP_DEST"
 
 chmod +x "$DESKTOP_DEST"
