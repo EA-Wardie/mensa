@@ -16,6 +16,8 @@ export const DEFAULT_ROW_LIMIT: number = 1000;
 
 export const DEFAULT_PORT: number = 5432;
 
+export const MAX_PORT: number = 65535;
+
 export const DEFAULT_DOUBLE_CLICK_TIMEOUT: number = 250;
 
 export const CONNECTION_TIMEOUT: number = 10;
@@ -27,8 +29,6 @@ export const CONNECTIONS_WIDTH: number = 72;
 export const TAB_WIDTH: number = 24;
 
 export const MAX_COLUMN_WIDTH: number = 40;
-
-export const BINARY_PREVIEW_BYTES: number = 16;
 
 export const ELLIPSIS: string = "…";
 

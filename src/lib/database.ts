@@ -2,7 +2,7 @@ import { SQL } from "bun";
 import { type ConnectionConfig, rowLimit } from "./config";
 import { CONNECTION_TIMEOUT } from "./consts";
 import { logError } from "./log";
-import { $openTables, $tableData, type TableData } from "./store";
+import { $openTables, $tableData, type TableData, type Value } from "./store";
 
 const SCHEMA: string = "public";
 
@@ -121,19 +121,26 @@ export async function loadTable(name: string): Promise<void> {
 	setTableData(name, { status: "loading" });
 
 	try {
-		const [columns, rows]: [ColumnRow[], unknown[][]] = await Promise.all([
-			sql<ColumnRow[]>`
+		const columns: string[] = (
+			await sql<ColumnRow[]>`
 				SELECT column_name
 				FROM information_schema.columns
 				WHERE table_schema = ${SCHEMA} AND table_name = ${name}
 				ORDER BY ordinal_position
-			`,
-			// One extra row tells whether the table has more than the limit.
-			sql`
-				SELECT * FROM ${sql.unsafe(`${quoteIdentifier(SCHEMA)}.${quoteIdentifier(name)}`)}
-				LIMIT ${rowLimit + 1}
-			`.values() as Promise<unknown[][]>,
-		]);
+			`
+		).map((column: ColumnRow): string => column.column_name);
+		// Each value is cast to text, so Postgres formats it with its type's own
+		// output, such as a date without a time or a timestamp in the session's
+		// time zone.
+		const values: string = columns
+			.map((column: string): string => `${quoteIdentifier(column)}::text`)
+			.join(", ");
+		const table: string = `${quoteIdentifier(SCHEMA)}.${quoteIdentifier(name)}`;
+		// One extra row tells whether the table has more than the limit.
+		const rows: Value[][] = await (sql`
+			SELECT ${sql.unsafe(values)} FROM ${sql.unsafe(table)}
+			LIMIT ${rowLimit + 1}
+		`.values() as Promise<Value[][]>);
 
 		if (!isCurrent()) {
 			return;
@@ -141,7 +148,7 @@ export async function loadTable(name: string): Promise<void> {
 
 		setTableData(name, {
 			status: "loaded",
-			columns: columns.map((column: ColumnRow): string => column.column_name),
+			columns: columns,
 			rows: rows.slice(0, rowLimit),
 			truncated: rows.length > rowLimit,
 		});

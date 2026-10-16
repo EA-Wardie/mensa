@@ -2,7 +2,7 @@ import * as core from "@opentui/core";
 import { theme } from "../lib/config";
 import { CLOSE_ICON, DATABASE_ICON, SIDEBAR_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { fitText } from "../lib/format";
+import { displayText, fitText } from "../lib/format";
 import { SHORTCUTS } from "../lib/shortcuts";
 import {
 	$connection,
@@ -52,7 +52,7 @@ export class TableSidebar {
 		header.add(
 			new core.TextRenderable(ctx, {
 				content: fitText(
-					`${DATABASE_ICON} ${$connection.get()?.name ?? ""}`,
+					`${DATABASE_ICON} ${displayText($connection.get()?.name ?? "")}`,
 					SIDEBAR_WIDTH - 7,
 				),
 				fg: theme.fg,

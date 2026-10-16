@@ -2,7 +2,7 @@ import * as core from "@opentui/core";
 import type { ReadableAtom, WritableAtom } from "nanostores";
 import { doubleClickTimeout, theme } from "../lib/config";
 import { ctx } from "../lib/context";
-import { fitText } from "../lib/format";
+import { displayText, fitText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 
@@ -104,9 +104,12 @@ export class List<T> extends core.Renderable {
 		width: number,
 		selected: boolean,
 	): void {
-		const label: string = fitText(this._options.label(item), width);
+		const label: string = fitText(
+			displayText(this._options.label(item)),
+			width,
+		);
 		const labelWidth: number = Bun.stringWidth(label);
-		const detail: string = this._options.detail?.(item) ?? "";
+		const detail: string = displayText(this._options.detail?.(item) ?? "");
 		const detailWidth: number = width - labelWidth - 2;
 		const bold: boolean = this._options.bold?.(item) ?? true;
 
@@ -209,7 +212,6 @@ export class List<T> extends core.Renderable {
 	private sync(): void {
 		this._scrollBar.scrollSize = this._items.length;
 		this._scrollBar.viewportSize = this.height;
-		this._scrollBar.slider.viewPortSize = Math.max(1, this.height);
 
 		this.scrollTo(this._offset);
 	}

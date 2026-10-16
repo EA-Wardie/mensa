@@ -2,6 +2,7 @@ import * as core from "@opentui/core";
 import { theme } from "../lib/config";
 import { CANCEL_ICON, CONFIRM_ICON } from "../lib/consts";
 import { ctx } from "../lib/context";
+import { displayText } from "../lib/format";
 import { $dialogOpen } from "../lib/store";
 import { Button } from "./Button";
 
@@ -62,7 +63,7 @@ export class Confirmation {
 	private addText(content: string, attributes: number = 0): void {
 		this._dialog.add(
 			new core.TextRenderable(ctx, {
-				content: content,
+				content: displayText(content),
 				fg: theme.fg,
 				attributes: attributes,
 				wrapMode: "word",

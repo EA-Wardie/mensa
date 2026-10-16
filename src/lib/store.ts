@@ -3,12 +3,15 @@ import { type ConnectionConfig, connections } from "./config";
 
 export type Screen = "connections" | "database";
 
+// A value as Postgres formats it as text, or null.
+export type Value = string | null;
+
 export type TableData =
 	| { status: "loading" }
 	| {
 			status: "loaded";
 			columns: string[];
-			rows: unknown[][];
+			rows: Value[][];
 			truncated: boolean;
 	  }
 	| { status: "error"; message: string };

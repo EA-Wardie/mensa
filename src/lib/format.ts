@@ -1,4 +1,4 @@
-import { BINARY_PREVIEW_BYTES, ELLIPSIS } from "./consts";
+import { ELLIPSIS } from "./consts";
 
 const SEGMENTER: Intl.Segmenter = new Intl.Segmenter(undefined, {
 	granularity: "grapheme",
@@ -6,8 +6,13 @@ const SEGMENTER: Intl.Segmenter = new Intl.Segmenter(undefined, {
 
 export const NULL_TEXT: string = "NULL";
 
-export function fitText(text: string, width: number): string {
-	if (Bun.stringWidth(text) <= width) {
+// Takes the text's width when the caller has already measured it.
+export function fitText(
+	text: string,
+	width: number,
+	textWidth: number = Bun.stringWidth(text),
+): string {
+	if (textWidth <= width) {
 		return text;
 	}
 
@@ -29,14 +34,6 @@ export function fitText(text: string, width: number): string {
 	return `${fitted}${ELLIPSIS}`;
 }
 
-function formatBinary(value: Uint8Array): string {
-	const hex: string = Buffer.from(
-		value.subarray(0, BINARY_PREVIEW_BYTES),
-	).toString("hex");
-
-	return `\\x${hex}${value.length > BINARY_PREVIEW_BYTES ? ELLIPSIS : ""}`;
-}
-
 // C0 controls, DEL and C1 controls, which would otherwise reach the terminal
 // as cursor moves or escape sequences.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
@@ -52,29 +49,12 @@ function controlPicture(character: string): string {
 	return code === 0x7f ? "␡" : "�";
 }
 
-function flatten(text: string): string {
+// Makes text from the database or the config safe to draw on one line.
+// Newlines, tabs and other control characters become symbols, so the text
+// can't send escape sequences to the terminal.
+export function displayText(text: string): string {
 	return text
 		.replace(/\r?\n/g, "↵")
 		.replace(/\t/g, "⇥")
 		.replace(CONTROL_CHARACTERS, controlPicture);
-}
-
-export function formatValue(value: unknown): string {
-	if (value === null || value === undefined) {
-		return NULL_TEXT;
-	}
-
-	if (value instanceof Date) {
-		return Number.isNaN(value.getTime()) ? String(value) : value.toISOString();
-	}
-
-	if (value instanceof Uint8Array) {
-		return formatBinary(value);
-	}
-
-	if (typeof value === "object") {
-		return flatten(JSON.stringify(value));
-	}
-
-	return flatten(String(value));
 }

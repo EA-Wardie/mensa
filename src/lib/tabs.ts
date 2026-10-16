@@ -7,6 +7,7 @@ import {
 	$openTables,
 	$tableData,
 	$tables,
+	type TableData,
 } from "./store";
 
 function saveTabs(
@@ -20,11 +21,14 @@ function saveTabs(
 	}
 }
 
-// Shows a tab, loading it the first time it is shown.
+// Shows a tab, loading it the first time it is shown, or again if it failed.
 function activate(table: string | null): void {
 	$activeTable.set(table);
 
-	if (table !== null && !(table in $tableData.get())) {
+	const data: TableData | undefined =
+		table === null ? undefined : $tableData.get()[table];
+
+	if (table !== null && (!data || data.status === "error")) {
 		loadTable(table);
 	}
 }

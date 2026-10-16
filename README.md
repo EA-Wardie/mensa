@@ -18,7 +18,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - The tables and views in the `public` schema, listed in a sidebar once connected.
 - Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that.
 - Several tables open at once, as tabs with a close button. Each tab remembers its scroll position, and each connection remembers its open tabs.
-- `NULL` shown in muted italics. JSON, arrays, dates and binary values are shown in one line, with newlines, tabs and other control characters shown as symbols.
+- Values shown as Postgres formats them as text, so a date has no time and a `timestamptz` is in the session's time zone. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
 - mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
 - Closing the connection returns to the start screen.
 - A themeable UI, configurable through a user config file.
@@ -85,7 +85,7 @@ logs_path = "~/.local/state/mensa/logs"
 name = "Local"
 url = "postgres://user:password@localhost:5432/app"
 
-# …or separate fields. port defaults to 5432, and overrides the port in a url when set.
+# …or separate fields. port defaults to 5432, must be at most 65535, and overrides the port in a url when set.
 [[connections]]
 name = "Staging"
 host = "db.example.com"

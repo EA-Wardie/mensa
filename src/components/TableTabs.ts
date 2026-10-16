@@ -2,7 +2,7 @@ import * as core from "@opentui/core";
 import { theme } from "../lib/config";
 import { CLOSE_ICON, TAB_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { fitText } from "../lib/format";
+import { displayText, fitText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 import { $activeTable, $openTables } from "../lib/store";
@@ -39,8 +39,18 @@ class TabBar extends core.Renderable {
 		return Math.max(1, Math.floor(this.width / TAB_WIDTH));
 	}
 
+	// One past the last visible tab.
+	private get end(): number {
+		return Math.min(this._open.length, this._first + this.slots);
+	}
+
+	// Where the › arrow is drawn, over the last visible tab's outer padding.
+	private get rightArrowOffset(): number {
+		return (this.end - this._first) * TAB_WIDTH - 1;
+	}
+
 	protected override renderSelf(buffer: core.OptimizedBuffer): void {
-		const end: number = Math.min(this._open.length, this._first + this.slots);
+		const end: number = this.end;
 
 		for (let index: number = this._first; index < end; index++) {
 			const table: string | undefined = this._open[index];
@@ -62,7 +72,7 @@ class TabBar extends core.Renderable {
 			this.drawArrow(
 				buffer,
 				SCROLL_RIGHT,
-				(end - this._first) * TAB_WIDTH - 1,
+				this.rightArrowOffset,
 				this._open[end - 1],
 			);
 		}
@@ -88,7 +98,7 @@ class TabBar extends core.Renderable {
 		}
 
 		buffer.drawText(
-			fitText(table, NAME_WIDTH),
+			fitText(displayText(table), NAME_WIDTH),
 			x + 1,
 			this.screenY,
 			active ? theme.fg_inverse : theme.fg,
@@ -118,7 +128,26 @@ class TabBar extends core.Renderable {
 		);
 	}
 
+	// -1 or 1 when x is on the ‹ or › arrow, else 0.
+	private arrowAt(x: number): number {
+		const relative: number = x - this.screenX;
+
+		if (relative === 0 && this._first > 0) {
+			return -1;
+		}
+
+		if (relative === this.rightArrowOffset && this.end < this._open.length) {
+			return 1;
+		}
+
+		return 0;
+	}
+
 	private hitAt(x: number): Hit | null {
+		if (this.arrowAt(x) !== 0) {
+			return null;
+		}
+
 		const relative: number = x - this.screenX;
 		const slot: number = Math.floor(relative / TAB_WIDTH);
 		const table: string | undefined =
@@ -165,7 +194,14 @@ class TabBar extends core.Renderable {
 	}
 
 	private handleMouseDown(event: core.MouseEvent): void {
+		const arrow: number = this.arrowAt(event.x);
 		const hit: Hit | null = this.hitAt(event.x);
+
+		if (arrow !== 0 && event.button === core.MouseButton.LEFT) {
+			this.scrollTo(this._first + arrow);
+
+			return;
+		}
 
 		if (!hit) {
 			return;

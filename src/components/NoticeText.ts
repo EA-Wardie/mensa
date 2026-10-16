@@ -2,6 +2,7 @@ import * as core from "@opentui/core";
 import type { ReadableAtom } from "nanostores";
 import { theme } from "../lib/config";
 import { ctx } from "../lib/context";
+import { displayText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { $notice } from "../lib/store";
 
@@ -43,7 +44,7 @@ export class NoticeText {
 	private update(): void {
 		const notice: string = $notice.get();
 
-		this._component.content = notice || this._options.fallback();
+		this._component.content = displayText(notice || this._options.fallback());
 		this._component.fg = notice
 			? theme.danger
 			: (this._options.fallbackColor ?? theme.fg);

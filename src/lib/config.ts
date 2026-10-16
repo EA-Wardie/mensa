@@ -5,6 +5,7 @@ import {
 	DEFAULT_PORT,
 	DEFAULT_ROW_LIMIT,
 	HOME_DIRECTORY,
+	MAX_PORT,
 	USER_CONFIG_PATH,
 } from "./consts";
 import { logError, setLogsPath } from "./log";
@@ -181,7 +182,7 @@ function parseConnection(
 		return undefined;
 	}
 
-	if (port !== undefined && !isPositiveInteger(port)) {
+	if (port !== undefined && !(isPositiveInteger(port) && port <= MAX_PORT)) {
 		logError(new Error(`Invalid port for "${name}": ${String(port)}`));
 
 		return undefined;
@@ -265,7 +266,11 @@ export function describeConnection(connection: ConnectionConfig): string {
 
 			return `${url.username ? `${url.username}@` : ""}${url.host}${url.pathname}`;
 		} catch {
-			return connection.url;
+			// Drops the password from a url the URL parser rejects.
+			return connection.url.replace(
+				/^([^:/?#]+:\/\/[^:@/?#]*):[^/?#]*@/,
+				"$1@",
+			);
 		}
 	}
 

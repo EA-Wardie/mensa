@@ -2,7 +2,7 @@ import * as core from "@opentui/core";
 import { theme } from "../lib/config";
 import { MAX_COLUMN_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { fitText, formatValue, NULL_TEXT } from "../lib/format";
+import { displayText, fitText, NULL_TEXT } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 import {
@@ -11,6 +11,7 @@ import {
 	$openTables,
 	$tableData,
 	type TableData,
+	type Value,
 } from "../lib/store";
 
 type Cell = string | null;
@@ -57,60 +58,58 @@ const SCROLL_STEP_X: number = 4;
 // which a full cell high ScrollBarRenderable can't do.
 const THUMB: string = "▄";
 
-const GRIDS: WeakMap<unknown[][], Grid> = new WeakMap<unknown[][], Grid>();
+const GRIDS: WeakMap<Value[][], Grid> = new WeakMap<Value[][], Grid>();
 
 function columnSpan(width: number): number {
 	return width + CELL_PADDING * 2 + 1;
 }
 
-function makeGrid(columns: string[], rows: unknown[][]): Grid {
-	const cells: Cell[][] = rows.map((row: unknown[]): Cell[] =>
-		row.map(
-			(value: unknown): Cell =>
-				value === null || value === undefined ? null : formatValue(value),
-		),
+interface Measured {
+	text: string;
+	width: number;
+}
+
+function measure(value: Value): Measured {
+	const text: string = value === null ? NULL_TEXT : displayText(value);
+
+	return { text: text, width: Bun.stringWidth(text) };
+}
+
+// Each text is measured once, both to size its column and to fit it.
+function makeGrid(columns: string[], rows: Value[][]): Grid {
+	const header: Measured[] = columns.map(measure);
+	const measured: Measured[][] = rows.map((row: Value[]): Measured[] =>
+		row.map(measure),
 	);
-
-	const widths: number[] = columns.map(
-		(column: string, index: number): number => {
-			let width: number = Bun.stringWidth(column);
-
-			for (const row of cells) {
-				const cell: Cell | undefined = row[index];
-
-				width = Math.max(
-					width,
-					cell === null ? NULL_TEXT.length : Bun.stringWidth(cell ?? ""),
-				);
-
-				if (width >= MAX_COLUMN_WIDTH) {
-					return MAX_COLUMN_WIDTH;
-				}
-			}
-
-			return width;
-		},
+	const widths: number[] = header.map(
+		(column: Measured, index: number): number =>
+			Math.min(
+				MAX_COLUMN_WIDTH,
+				measured.reduce(
+					(width: number, row: Measured[]): number =>
+						Math.max(width, row[index]?.width ?? 0),
+					column.width,
+				),
+			),
 	);
-
-	const totalWidth: number = widths.reduce(
-		(total: number, width: number): number => total + columnSpan(width),
-		0,
-	);
-	const fit: (text: string, index: number) => string = (
-		text: string,
+	const fit: (cell: Measured, index: number) => string = (
+		cell: Measured,
 		index: number,
-	): string => fitText(text, widths[index] ?? 0);
+	): string => fitText(cell.text, widths[index] ?? 0, cell.width);
 
 	return {
-		columns: columns.map(fit),
-		cells: cells.map((row: Cell[]): Cell[] =>
+		columns: header.map(fit),
+		cells: measured.map((row: Measured[], index: number): Cell[] =>
 			row.map(
-				(cell: Cell, index: number): Cell =>
-					cell === null ? null : fit(cell, index),
+				(cell: Measured, column: number): Cell =>
+					rows[index]?.[column] === null ? null : fit(cell, column),
 			),
 		),
-		widths,
-		totalWidth,
+		widths: widths,
+		totalWidth: widths.reduce(
+			(total: number, width: number): number => total + columnSpan(width),
+			0,
+		),
 	};
 }
 
@@ -274,26 +273,34 @@ export class DataGrid extends core.Renderable {
 
 	private drawMessage(buffer: core.OptimizedBuffer, message: string): void {
 		const width: number = Math.max(0, this.width - 2);
-		// Below the tabs, a rule separates the message from them.
-		const ruled: boolean = $openTables.get().length > 0;
+		const centred: boolean = $openTables.get().length === 0;
 
-		if (width <= 0 || this.height <= (ruled ? 1 : 0)) {
+		if (width <= 0 || this.height <= 1) {
 			return;
 		}
 
-		if (ruled) {
-			buffer.drawText(
-				RULE.repeat(this.width),
-				this.screenX,
-				this.screenY,
-				theme.border,
-			);
-		}
+		// The top border, under the tabs or, with none open, level with the
+		// sidebar's.
+		buffer.drawText(
+			RULE.repeat(this.width),
+			this.screenX,
+			this.screenY,
+			theme.border,
+		);
+
+		const text: string = fitText(displayText(message), width);
+		// With no tabs open, the hint sits in the middle of the empty grid.
+		const x: number = centred
+			? this.screenX + Math.floor((this.width - Bun.stringWidth(text)) / 2)
+			: this.screenX + 1;
+		const y: number = centred
+			? this.screenY + 1 + Math.floor((this.height - 2) / 2)
+			: this.screenY + 1;
 
 		buffer.drawText(
-			fitText(message, width),
-			this.screenX + 1,
-			this.screenY + (ruled ? 1 : 0),
+			text,
+			x,
+			y,
 			this._data?.status === "error" ? theme.danger : theme.muted,
 		);
 	}
@@ -494,15 +501,13 @@ export class DataGrid extends core.Renderable {
 		}
 
 		const y: number = this.thumbY;
-		const color: core.RGBA =
-			this._thumbGrab === null ? theme.scrollbar_thumb : theme.fg;
 
 		for (let cell: number = 0; cell < thumb.width; cell++) {
 			buffer.setCellWithAlphaBlending(
 				this.screenX + thumb.start + cell,
 				y,
 				THUMB,
-				color,
+				theme.scrollbar_thumb,
 				theme.scrollbar_track,
 			);
 		}
@@ -613,7 +618,6 @@ export class DataGrid extends core.Renderable {
 
 		this._vertical.scrollSize = grid?.cells.length ?? 0;
 		this._vertical.viewportSize = this.bodyHeight;
-		this._vertical.slider.viewPortSize = Math.max(1, this.bodyHeight);
 
 		this.scrollTo(this._offset);
 	}
