@@ -34,6 +34,10 @@ export const ELLIPSIS: string = "…";
 
 export const CLOSE_ICON: string = "󰅖";
 
+export const SORT_ASC_ICON: string = "󰅃";
+
+export const SORT_DESC_ICON: string = "󰅀";
+
 export const CANCEL_ICON: string = "";
 
 export const CONFIRM_ICON: string = "";

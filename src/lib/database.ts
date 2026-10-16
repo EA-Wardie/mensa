@@ -2,7 +2,16 @@ import { SQL } from "bun";
 import { type ConnectionConfig, rowLimit } from "./config";
 import { CONNECTION_TIMEOUT } from "./consts";
 import { logError } from "./log";
-import { $openTables, $tableData, type TableData, type Value } from "./store";
+import {
+	$notice,
+	$openTables,
+	$sorts,
+	$tableData,
+	type Sort,
+	setEntry,
+	type TableData,
+	type Value,
+} from "./store";
 
 const SCHEMA: string = "public";
 
@@ -22,6 +31,15 @@ export interface OpenedClient {
 // The open client, or the one still connecting. closeClient() clears it, so a
 // query that finishes later can tell its session has ended.
 let client: SQL | null = null;
+
+interface SortNotice {
+	table: string;
+	text: string;
+}
+
+// The notice a failed sort set, so the next load of that table can clear it
+// without clearing any other notice.
+let sortNotice: SortNotice | null = null;
 
 export function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -51,11 +69,27 @@ function quoteIdentifier(name: string): string {
 	return `"${name.replaceAll('"', '""')}"`;
 }
 
-function setTableData(name: string, data: TableData | undefined): void {
-	const { [name]: _, ...rest }: Readonly<Record<string, TableData>> =
-		$tableData.get();
+function clearSortNotice(table: string): void {
+	if (sortNotice?.table !== table) {
+		return;
+	}
 
-	$tableData.set(data ? { ...rest, [name]: data } : rest);
+	if ($notice.get() === sortNotice.text) {
+		$notice.set("");
+	}
+
+	sortNotice = null;
+}
+
+async function listColumns(sql: SQL, name: string): Promise<string[]> {
+	const rows: ColumnRow[] = await sql`
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema = ${SCHEMA} AND table_name = ${name}
+		ORDER BY ordinal_position
+	`;
+
+	return rows.map((row: ColumnRow): string => row.column_name);
 }
 
 async function listTables(sql: SQL): Promise<string[]> {
@@ -115,20 +149,27 @@ export async function loadTable(name: string): Promise<void> {
 		return;
 	}
 
+	const sort: Sort | undefined = $sorts.get()[name];
+	const previous: TableData | undefined = $tableData.get()[name];
+	// A newer sort replaces the entry, so this load's result is dropped.
 	const isCurrent: () => boolean = (): boolean =>
-		client === sql && $openTables.get().includes(name);
+		client === sql &&
+		$openTables.get().includes(name) &&
+		$sorts.get()[name] === sort;
 
-	setTableData(name, { status: "loading" });
+	clearSortNotice(name);
+
+	// A new sort keeps showing the old rows until the sorted ones arrive, and
+	// reuses their columns.
+	if (previous?.status !== "loaded") {
+		setEntry($tableData, name, { status: "loading" });
+	}
 
 	try {
-		const columns: string[] = (
-			await sql<ColumnRow[]>`
-				SELECT column_name
-				FROM information_schema.columns
-				WHERE table_schema = ${SCHEMA} AND table_name = ${name}
-				ORDER BY ordinal_position
-			`
-		).map((column: ColumnRow): string => column.column_name);
+		const columns: string[] =
+			previous?.status === "loaded"
+				? previous.columns
+				: await listColumns(sql, name);
 		// Each value is cast to text, so Postgres formats it with its type's own
 		// output, such as a date without a time or a timestamp in the session's
 		// time zone.
@@ -136,9 +177,14 @@ export async function loadTable(name: string): Promise<void> {
 			.map((column: string): string => `${quoteIdentifier(column)}::text`)
 			.join(", ");
 		const table: string = `${quoteIdentifier(SCHEMA)}.${quoteIdentifier(name)}`;
+		// Qualified with the table, since a bare name would mean the ::text
+		// output column, and sort numbers and dates as text.
+		const order: string = sort
+			? ` ORDER BY ${table}.${quoteIdentifier(sort.column)} ${sort.direction === "asc" ? "ASC" : "DESC"}`
+			: "";
 		// One extra row tells whether the table has more than the limit.
 		const rows: Value[][] = await (sql`
-			SELECT ${sql.unsafe(values)} FROM ${sql.unsafe(table)}
+			SELECT ${sql.unsafe(values)} FROM ${sql.unsafe(`${table}${order}`)}
 			LIMIT ${rowLimit + 1}
 		`.values() as Promise<Value[][]>);
 
@@ -146,30 +192,53 @@ export async function loadTable(name: string): Promise<void> {
 			return;
 		}
 
-		setTableData(name, {
+		setEntry($tableData, name, {
 			status: "loaded",
 			columns: columns,
 			rows: rows.slice(0, rowLimit),
 			truncated: rows.length > rowLimit,
+			sort: sort ?? null,
 		});
 	} catch (error) {
 		if (!isCurrent()) {
 			return;
 		}
 
+		const data: TableData | undefined = $tableData.get()[name];
+
 		logError(error);
-		setTableData(name, { status: "error", message: errorMessage(error) });
+
+		// A failed sort keeps the rows and the sort they have.
+		if (data?.status === "loaded") {
+			const text: string = sort
+				? `Could not sort by ${sort.column}: ${errorMessage(error)}`
+				: `Could not reload ${name}: ${errorMessage(error)}`;
+
+			setEntry($sorts, name, data.sort ?? undefined);
+			$notice.set(text);
+
+			sortNotice = { table: name, text: text };
+
+			return;
+		}
+
+		setEntry($tableData, name, {
+			status: "error",
+			message: errorMessage(error),
+		});
 	}
 }
 
 export function forgetTable(name: string): void {
-	setTableData(name, undefined);
+	setEntry($tableData, name, undefined);
+	setEntry($sorts, name, undefined);
 }
 
 export async function closeClient(): Promise<void> {
 	const sql: SQL | null = client;
 
 	client = null;
+	sortNotice = null;
 
 	await sql?.close({ timeout: 0 }).catch(logError);
 }

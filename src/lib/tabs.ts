@@ -5,8 +5,11 @@ import {
 	$activeTable,
 	$connection,
 	$openTables,
+	$sorts,
 	$tableData,
 	$tables,
+	type Sort,
+	setEntry,
 	type TableData,
 } from "./store";
 
@@ -81,6 +84,29 @@ export function cycleTable(step: number): void {
 	saveTabs();
 }
 
+// Cycles the column through ascending, descending and no sort, and loads the
+// table sorted. A table has one sort, so a new column replaces the old one.
+export function sortTable(
+	column: string,
+	table: string | null = $activeTable.get(),
+): void {
+	if (table === null) {
+		return;
+	}
+
+	const sort: Sort | undefined = $sorts.get()[table];
+
+	if (sort?.column !== column) {
+		setEntry($sorts, table, { column: column, direction: "asc" });
+	} else if (sort.direction === "asc") {
+		setEntry($sorts, table, { column: column, direction: "desc" });
+	} else {
+		setEntry($sorts, table, undefined);
+	}
+
+	loadTable(table);
+}
+
 // Reopens the connection's saved tabs that still exist. Only the active one
 // loads now, and the others when they are shown.
 export function restoreTabs(connection: ConnectionConfig): void {
@@ -109,4 +135,5 @@ export function resetTabs(): void {
 	$openTables.set([]);
 	$activeTable.set(null);
 	$tableData.set({});
+	$sorts.set({});
 }

@@ -6,6 +6,15 @@ export type Screen = "connections" | "database";
 // A value as Postgres formats it as text, or null.
 export type Value = string | null;
 
+export type SortDirection = "asc" | "desc";
+
+export interface Sort {
+	column: string;
+	direction: SortDirection;
+}
+
+// A loaded table's sort is the one its rows have, which lags behind $sorts
+// while a new sort loads.
 export type TableData =
 	| { status: "loading" }
 	| {
@@ -13,6 +22,7 @@ export type TableData =
 			columns: string[];
 			rows: Value[][];
 			truncated: boolean;
+			sort: Sort | null;
 	  }
 	| { status: "error"; message: string };
 
@@ -41,6 +51,9 @@ export const $tableData = nanostores.atom<Readonly<Record<string, TableData>>>(
 	{},
 );
 
+// The sort each open table asked for, set as soon as a header is clicked.
+export const $sorts = nanostores.atom<Readonly<Record<string, Sort>>>({});
+
 export const $activeTableData: nanostores.ReadableAtom<TableData | undefined> =
 	nanostores.computed(
 		[$activeTable, $tableData],
@@ -49,6 +62,17 @@ export const $activeTableData: nanostores.ReadableAtom<TableData | undefined> =
 			data: Readonly<Record<string, TableData>>,
 		): TableData | undefined => (table === null ? undefined : data[table]),
 	);
+
+// Replaces one entry of a record atom, or removes it when value is undefined.
+export function setEntry<T>(
+	store: nanostores.WritableAtom<Readonly<Record<string, T>>>,
+	name: string,
+	value: T | undefined,
+): void {
+	const { [name]: _, ...rest }: Readonly<Record<string, T>> = store.get();
+
+	store.set(value === undefined ? rest : { ...rest, [name]: value });
+}
 
 export const $dialogOpen = nanostores.atom<boolean>(false);
 

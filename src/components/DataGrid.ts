@@ -1,6 +1,6 @@
 import * as core from "@opentui/core";
 import { theme } from "../lib/config";
-import { MAX_COLUMN_WIDTH } from "../lib/consts";
+import { MAX_COLUMN_WIDTH, SORT_ASC_ICON, SORT_DESC_ICON } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { displayText, fitText, NULL_TEXT } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
@@ -9,10 +9,13 @@ import {
 	$activeTable,
 	$activeTableData,
 	$openTables,
+	$sorts,
 	$tableData,
+	type Sort,
 	type TableData,
 	type Value,
 } from "../lib/store";
+import { sortTable } from "../lib/tabs";
 
 type Cell = string | null;
 
@@ -30,6 +33,12 @@ interface Position {
 	y: number;
 }
 
+// A tab's scroll position, and the sort its rows had then.
+interface TablePosition {
+	offset: Position;
+	sort: Sort | null;
+}
+
 interface Thumb {
 	start: number;
 	width: number;
@@ -41,6 +50,10 @@ interface Thumb {
 const HEADER_HEIGHT: number = 3;
 
 const CELL_PADDING: number = 1;
+
+// Every header keeps room for a gap and the sort chevron, so sorting doesn't
+// move the columns.
+const SORT_SPACE: number = 2;
 
 const SEPARATOR: string = "│";
 
@@ -88,21 +101,21 @@ function makeGrid(columns: string[], rows: Value[][]): Grid {
 				measured.reduce(
 					(width: number, row: Measured[]): number =>
 						Math.max(width, row[index]?.width ?? 0),
-					column.width,
+					column.width + SORT_SPACE,
 				),
 			),
 	);
-	const fit: (cell: Measured, index: number) => string = (
-		cell: Measured,
-		index: number,
-	): string => fitText(cell.text, widths[index] ?? 0, cell.width);
 
 	return {
-		columns: header.map(fit),
+		columns: header.map((column: Measured, index: number): string =>
+			fitText(column.text, (widths[index] ?? 0) - SORT_SPACE, column.width),
+		),
 		cells: measured.map((row: Measured[], index: number): Cell[] =>
 			row.map(
 				(cell: Measured, column: number): Cell =>
-					rows[index]?.[column] === null ? null : fit(cell, column),
+					rows[index]?.[column] === null
+						? null
+						: fitText(cell.text, widths[column] ?? 0, cell.width),
 			),
 		),
 		widths: widths,
@@ -136,7 +149,10 @@ export class DataGrid extends core.Renderable {
 	private _data: TableData | undefined = undefined;
 	private _grid: Grid | null = null;
 	private _offset: Position = { x: 0, y: 0 };
-	private _positions: Map<string, Position> = new Map<string, Position>();
+	private _positions: Map<string, TablePosition> = new Map<
+		string,
+		TablePosition
+	>();
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
 	private _thumbGrab: number | null = null;
@@ -334,6 +350,14 @@ export class DataGrid extends core.Renderable {
 
 	private drawHeader(buffer: core.OptimizedBuffer, grid: Grid): void {
 		const y: number = this.screenY + 1;
+		const applied: Sort | null = this.loadedSort();
+		const requested: Sort | null =
+			(this._table === null ? undefined : $sorts.get()[this._table]) ?? null;
+		// While a new sort loads, its chevron is muted, or the old one's if the
+		// sort is being removed.
+		const sort: Sort | null = requested ?? applied;
+		const pending: boolean = requested !== applied;
+		const sorted: number = sort ? this.columnNames().indexOf(sort.column) : -1;
 
 		this.forEachColumn(
 			grid,
@@ -346,6 +370,16 @@ export class DataGrid extends core.Renderable {
 					undefined,
 					core.TextAttributes.BOLD,
 				);
+
+				if (index === sorted) {
+					buffer.drawText(
+						sort?.direction === "desc" ? SORT_DESC_ICON : SORT_ASC_ICON,
+						x + CELL_PADDING + (grid.widths[index] ?? 0) - 1,
+						y,
+						pending ? theme.muted : theme.fg,
+					);
+				}
+
 				buffer.drawText(TOP_TEE, separator, y - 1, theme.border);
 				buffer.drawText(SEPARATOR, separator, y, theme.border);
 				buffer.drawText(CROSS, separator, y + 1, theme.border);
@@ -414,6 +448,34 @@ export class DataGrid extends core.Renderable {
 		}
 	}
 
+	// The sort the shown rows have.
+	private loadedSort(): Sort | null {
+		return this._data?.status === "loaded" ? this._data.sort : null;
+	}
+
+	private columnNames(): string[] {
+		return this._data?.status === "loaded" ? this._data.columns : [];
+	}
+
+	private columnAt(screenX: number): number | null {
+		let found: number | null = null;
+
+		if (!this._grid || screenX >= this.screenX + this.bodyWidth) {
+			return null;
+		}
+
+		this.forEachColumn(
+			this._grid,
+			(index: number, x: number, separator: number): void => {
+				if (screenX >= x && screenX <= separator) {
+					found = index;
+				}
+			},
+		);
+
+		return found;
+	}
+
 	private forEachColumn(
 		grid: Grid,
 		draw: (index: number, x: number, separator: number) => void,
@@ -446,6 +508,7 @@ export class DataGrid extends core.Renderable {
 	protected override onMouseEvent(event: core.MouseEvent): void {
 		switch (event.type) {
 			case "down":
+				this.handleHeaderDown(event);
 				this.handleThumbDown(event);
 				break;
 			case "up":
@@ -473,6 +536,27 @@ export class DataGrid extends core.Renderable {
 				this.updateHovered();
 				break;
 		}
+	}
+
+	// Clicking a column name cycles its sort.
+	private handleHeaderDown(event: core.MouseEvent): void {
+		if (
+			event.button !== core.MouseButton.LEFT ||
+			event.y !== this.screenY + 1 ||
+			this.message() !== null
+		) {
+			return;
+		}
+
+		const index: number | null = this.columnAt(event.x);
+		const column: string | undefined =
+			index === null ? undefined : this.columnNames()[index];
+
+		if (column === undefined) {
+			return;
+		}
+
+		sortTable(column);
 	}
 
 	private thumb(): Thumb | null {
@@ -635,7 +719,10 @@ export class DataGrid extends core.Renderable {
 		this._vertical.scrollPosition = this._offset.y;
 
 		if (this._table !== null) {
-			this._positions.set(this._table, this._offset);
+			this._positions.set(this._table, {
+				offset: this._offset,
+				sort: this.loadedSort(),
+			});
 		}
 
 		this.updateHovered();
@@ -646,9 +733,20 @@ export class DataGrid extends core.Renderable {
 		const table: string | null = $activeTable.get();
 		const data: TableData | undefined = $activeTableData.get();
 		const grid: Grid | null = gridFor(data);
+		const saved: TablePosition | undefined =
+			table === null ? undefined : this._positions.get(table);
+		// Newly sorted rows start at the top, also when they arrived while
+		// another tab was shown. A failed sort keeps the rows and where they
+		// were scrolled to.
+		const resorted: boolean =
+			data?.status === "loaded" &&
+			saved !== undefined &&
+			data.sort !== saved.sort;
 
-		if (table !== this._table) {
-			this._offset = (table && this._positions.get(table)) || { x: 0, y: 0 };
+		if (table !== this._table || resorted) {
+			const offset: Position = saved?.offset ?? { x: 0, y: 0 };
+
+			this._offset = resorted ? { x: offset.x, y: 0 } : offset;
 		}
 
 		this._table = table;
@@ -674,6 +772,9 @@ export class DataGrid extends core.Renderable {
 			}),
 			$tableData.subscribe((): void => {
 				this.update();
+			}),
+			$sorts.listen((): void => {
+				this.requestRender();
 			}),
 			(): void => {
 				if (DataGrid.current === this) {
