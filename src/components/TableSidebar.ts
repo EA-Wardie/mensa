@@ -33,6 +33,7 @@ export class TableSidebar {
 		});
 
 		this.addHeader();
+		this.addDatabaseHeader();
 		this.addTables();
 	}
 
@@ -41,6 +42,28 @@ export class TableSidebar {
 	}
 
 	private addHeader(): void {
+		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
+			border: ["top"],
+			borderColor: theme.border,
+			flexDirection: "row",
+			justifyContent: "space-between",
+			flexShrink: 0,
+			paddingLeft: 1,
+		});
+
+		header.add(
+			new core.TextRenderable(ctx, {
+				content: "📒 Mensa",
+				fg: theme.fg,
+				attributes: core.TextAttributes.BOLD,
+				selectable: false,
+			}),
+		);
+
+		this._component.add(header);
+	}
+
+	private addDatabaseHeader(): void {
 		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
 			border: ["top", "bottom"],
 			borderColor: theme.border,

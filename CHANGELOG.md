@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.2
+
+### Changed
+
+- Switching tabs selects the tab's table in the sidebar, scrolling it into view. This also happens when closing a tab switches to another, and when saved tabs reopen. Closing the last tab keeps the sidebar's selection.
+
+### Fixed
+
+- A table with no rows ends its column separators with `┴` on the rule under the column names, instead of crossing it with `┼`.
+
 ## 0.2.1
 
 ### Added

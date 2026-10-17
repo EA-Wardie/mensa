@@ -10,7 +10,7 @@ export const STATE_PATH: string = `${HOME_DIRECTORY}/.local/state/mensa/state.js
 
 export const DATABASE_ICON: string = "󰆼";
 
-export const APP_TITLE: string = `${DATABASE_ICON} Mensa`;
+export const APP_TITLE: string = "📒 Mensa";
 
 export const DEFAULT_ROW_LIMIT: number = 1000;
 

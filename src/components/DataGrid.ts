@@ -275,6 +275,8 @@ export class DataGrid extends core.Renderable {
 		const sort: Sort | null = requested ?? applied;
 		const pending: boolean = requested !== applied;
 		const sorted: number = sort ? this.columnNames().indexOf(sort.column) : -1;
+		// With no rows under it, the separators end at the rule under the names.
+		const join: string = grid.cells.length > 0 ? CROSS : BOTTOM_TEE;
 
 		this.forEachColumn(
 			grid,
@@ -299,7 +301,7 @@ export class DataGrid extends core.Renderable {
 
 				buffer.drawText(TOP_TEE, separator, y - 1, theme.border);
 				buffer.drawText(SEPARATOR, separator, y, theme.border);
-				buffer.drawText(CROSS, separator, y + 1, theme.border);
+				buffer.drawText(join, separator, y + 1, theme.border);
 			},
 		);
 	}

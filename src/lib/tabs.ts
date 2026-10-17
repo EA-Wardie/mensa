@@ -6,6 +6,7 @@ import {
 	$connection,
 	$openTables,
 	$selectedRows,
+	$selectedTable,
 	$sorts,
 	$tableData,
 	$tables,
@@ -25,9 +26,15 @@ function saveTabs(
 	}
 }
 
-// Shows a tab, loading it the first time it is shown, or again if it failed.
+// Shows a tab and selects it in the sidebar, loading it the first time it is
+// shown, or again if it failed. With no tab left, the sidebar keeps its
+// selection.
 function activate(table: string | null): void {
 	$activeTable.set(table);
+
+	if (table !== null) {
+		$selectedTable.set(table);
+	}
 
 	const data: TableData | undefined =
 		table === null ? undefined : $tableData.get()[table];

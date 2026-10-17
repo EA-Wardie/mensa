@@ -19,7 +19,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that.
 - Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. The database sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column the database can't sort, such as Postgres `json`, is reported in the footer and the rows stay as they were.
 - Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
-- Several tables open at once, as tabs with a close button. Each tab remembers its scroll position, and each connection remembers its open tabs.
+- Several tables open at once, as tabs with a close button. The sidebar selects the active tab's table. Each tab remembers its scroll position, and each connection remembers its open tabs.
 - Values shown as the database formats them as text, so a date has no time and a Postgres `timestamptz` is in the session's time zone. MySQL binary and blob values are shown as hex, such as `0x00FF`, bits in binary, such as `101`, and spatial values as text, such as `POINT(1 2)`. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
 - mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
 - Closing the connection returns to the start screen.
