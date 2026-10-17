@@ -5,6 +5,7 @@ import {
 	$activeTable,
 	$connection,
 	$openTables,
+	$selectedRows,
 	$sorts,
 	$tableData,
 	$tables,
@@ -107,6 +108,16 @@ export function sortTable(
 	loadTable(table);
 }
 
+// Selects a row of the table's loaded rows, or clears the selection with null.
+export function selectRow(
+	row: number | null,
+	table: string | null = $activeTable.get(),
+): void {
+	if (table !== null) {
+		setEntry($selectedRows, table, row ?? undefined);
+	}
+}
+
 // Reopens the connection's saved tabs that still exist. Only the active one
 // loads now, and the others when they are shown.
 export function restoreTabs(connection: ConnectionConfig): void {
@@ -136,4 +147,5 @@ export function resetTabs(): void {
 	$activeTable.set(null);
 	$tableData.set({});
 	$sorts.set({});
+	$selectedRows.set({});
 }

@@ -92,7 +92,7 @@ async function loadUserConfig(): Promise<ConfigFile> {
 	}
 }
 
-export function expandHome(path: string): string {
+function expandHome(path: string): string {
 	if (path === "~" || path.startsWith("~/")) {
 		return HOME_DIRECTORY + path.slice(1);
 	}

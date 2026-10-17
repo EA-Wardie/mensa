@@ -5,6 +5,7 @@ import { logError } from "./log";
 import {
 	$notice,
 	$openTables,
+	$selectedRows,
 	$sorts,
 	$tableData,
 	type Sort,
@@ -192,6 +193,8 @@ export async function loadTable(name: string): Promise<void> {
 			return;
 		}
 
+		// Cleared first, so no listener sees the old selection with the new rows.
+		setEntry($selectedRows, name, undefined);
 		setEntry($tableData, name, {
 			status: "loaded",
 			columns: columns,
@@ -232,6 +235,7 @@ export async function loadTable(name: string): Promise<void> {
 export function forgetTable(name: string): void {
 	setEntry($tableData, name, undefined);
 	setEntry($sorts, name, undefined);
+	setEntry($selectedRows, name, undefined);
 }
 
 export async function closeClient(): Promise<void> {

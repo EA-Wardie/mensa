@@ -19,7 +19,7 @@ import {
 	$tables,
 	type Screen,
 } from "./store";
-import { closeTable, cycleTable, openTable } from "./tabs";
+import { closeTable, cycleTable, openTable, selectRow } from "./tabs";
 
 type Run = () => void;
 
@@ -190,6 +190,14 @@ export const SHORTCUTS = {
 		description: "Scroll the columns right",
 		screen: "database",
 		run: withGrid((grid: DataGrid): void => grid.scrollColumns(1)),
+	},
+	clearRow: {
+		key: "escape",
+		description: "Clear the selected row",
+		screen: "database",
+		run: (): void => {
+			selectRow(null);
+		},
 	},
 	disconnect: {
 		key: "c",

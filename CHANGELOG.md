@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.1
+
+### Added
+
+- Clicking a row in the grid selects it, shown in the selection colour. Clicking it again keeps it selected, and `Escape` clears it. Each tab keeps its own selected row, and new rows clear it, such as after a sort. A failed sort keeps it.
+
+### Changed
+
+- Dragging the grid's horizontal scrollbar no longer highlights the row under the mouse.
+
+### Internal
+
+- `$selectedRows` holds each open table's selected row as an index into its loaded rows, ready for an editing sidebar to read. `loadTable` clears it when new rows arrive, and closing the tab or the connection forgets it.
+- `DataGrid` is split up. `lib/grid.ts` measures and fits a table's cells, and `HorizontalScrollBar` is a child renderable that draws the thumb and handles its clicks and drags, with the same sizes as `ScrollBarRenderable`.
+- Removed the unused `Divider` and `Spacer` components, and `expandHome` is no longer exported.
+
 ## 0.1.0
 
 ### Added

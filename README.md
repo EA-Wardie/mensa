@@ -18,6 +18,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - The tables and views in the `public` schema, listed in a sidebar once connected.
 - Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that.
 - Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. Postgres sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column Postgres can't sort, such as `json`, is reported in the footer and the rows stay as they were.
+- Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
 - Several tables open at once, as tabs with a close button. Each tab remembers its scroll position, and each connection remembers its open tabs.
 - Values shown as Postgres formats them as text, so a date has no time and a `timestamptz` is in the session's time zone. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
 - mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
@@ -38,6 +39,7 @@ This version only displays data. It can't edit data or run queries.
 | `X` | Tables | Close the active tab |
 | `PageUp`, `PageDown`, `Home`, `End` | Tables | Scroll the rows |
 | `Left` / `H`, `Right` / `L` | Tables | Scroll the columns |
+| `Escape` | Tables | Clear the selected row |
 | `C` | Tables | Close the connection, after confirming |
 | `Q` | Everywhere | Quit, after confirming |
 | `Return`, `Escape` | Confirmation | Confirm or cancel |
@@ -46,6 +48,7 @@ Mouse controls:
 
 - Double click a connection to connect, or a table to open it.
 - Click a tab to switch to it. Click its close button or middle click it to close it. The wheel scrolls the tabs when they don't all fit.
+- Click a row to select it. `Escape` clears the selection.
 - Click a column header to sort by it. Each click moves it from no sort to ascending, then descending, then back to no sort. Sorting another column replaces the current sort.
 - The mouse wheel scrolls the lists and the grid's rows. Shift with the wheel, or a horizontal wheel, scrolls the grid's columns. You can also drag the scrollbars.
 - The close button in the sidebar header closes the connection.

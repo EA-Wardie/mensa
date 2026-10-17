@@ -1,32 +1,29 @@
 import * as core from "@opentui/core";
 import { theme } from "../lib/config";
-import { MAX_COLUMN_WIDTH, SORT_ASC_ICON, SORT_DESC_ICON } from "../lib/consts";
+import { SORT_ASC_ICON, SORT_DESC_ICON } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { displayText, fitText, NULL_TEXT } from "../lib/format";
+import {
+	CELL_PADDING,
+	type Cell,
+	columnSpan,
+	type Grid,
+	gridFor,
+} from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 import {
 	$activeTable,
 	$activeTableData,
 	$openTables,
+	$selectedRows,
 	$sorts,
 	$tableData,
 	type Sort,
 	type TableData,
-	type Value,
 } from "../lib/store";
-import { sortTable } from "../lib/tabs";
-
-type Cell = string | null;
-
-// Column names and cells are fitted to their column once per load, so a frame
-// only draws them.
-interface Grid {
-	columns: string[];
-	cells: Cell[][];
-	widths: number[];
-	totalWidth: number;
-}
+import { selectRow, sortTable } from "../lib/tabs";
+import { HorizontalScrollBar } from "./HorizontalScrollBar";
 
 interface Position {
 	x: number;
@@ -39,21 +36,8 @@ interface TablePosition {
 	sort: Sort | null;
 }
 
-interface Thumb {
-	start: number;
-	width: number;
-	track: number;
-	max: number;
-}
-
 // The top rule, the column names and the rule under them.
 const HEADER_HEIGHT: number = 3;
-
-const CELL_PADDING: number = 1;
-
-// Every header keeps room for a gap and the sort chevron, so sorting doesn't
-// move the columns.
-const SORT_SPACE: number = 2;
 
 const SEPARATOR: string = "│";
 
@@ -67,84 +51,11 @@ const BOTTOM_TEE: string = "┴";
 
 const SCROLL_STEP_X: number = 4;
 
-// A lower half block keeps the horizontal thumb as thin as the vertical one,
-// which a full cell high ScrollBarRenderable can't do.
-const THUMB: string = "▄";
-
-const GRIDS: WeakMap<Value[][], Grid> = new WeakMap<Value[][], Grid>();
-
-function columnSpan(width: number): number {
-	return width + CELL_PADDING * 2 + 1;
-}
-
-interface Measured {
-	text: string;
-	width: number;
-}
-
-function measure(value: Value): Measured {
-	const text: string = value === null ? NULL_TEXT : displayText(value);
-
-	return { text: text, width: Bun.stringWidth(text) };
-}
-
-// Each text is measured once, both to size its column and to fit it.
-function makeGrid(columns: string[], rows: Value[][]): Grid {
-	const header: Measured[] = columns.map(measure);
-	const measured: Measured[][] = rows.map((row: Value[]): Measured[] =>
-		row.map(measure),
-	);
-	const widths: number[] = header.map(
-		(column: Measured, index: number): number =>
-			Math.min(
-				MAX_COLUMN_WIDTH,
-				measured.reduce(
-					(width: number, row: Measured[]): number =>
-						Math.max(width, row[index]?.width ?? 0),
-					column.width + SORT_SPACE,
-				),
-			),
-	);
-
-	return {
-		columns: header.map((column: Measured, index: number): string =>
-			fitText(column.text, (widths[index] ?? 0) - SORT_SPACE, column.width),
-		),
-		cells: measured.map((row: Measured[], index: number): Cell[] =>
-			row.map(
-				(cell: Measured, column: number): Cell =>
-					rows[index]?.[column] === null
-						? null
-						: fitText(cell.text, widths[column] ?? 0, cell.width),
-			),
-		),
-		widths: widths,
-		totalWidth: widths.reduce(
-			(total: number, width: number): number => total + columnSpan(width),
-			0,
-		),
-	};
-}
-
-function gridFor(data: TableData | undefined): Grid | null {
-	if (data?.status !== "loaded") {
-		return null;
-	}
-
-	let grid: Grid | undefined = GRIDS.get(data.rows);
-
-	if (!grid) {
-		grid = makeGrid(data.columns, data.rows);
-		GRIDS.set(data.rows, grid);
-	}
-
-	return grid;
-}
-
 export class DataGrid extends core.Renderable {
 	public static current: DataGrid | null = null;
 
 	private _vertical: core.ScrollBarRenderable;
+	private _horizontal: HorizontalScrollBar;
 	private _table: string | null = null;
 	private _data: TableData | undefined = undefined;
 	private _grid: Grid | null = null;
@@ -155,7 +66,6 @@ export class DataGrid extends core.Renderable {
 	>();
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
-	private _thumbGrab: number | null = null;
 
 	constructor(options: core.RenderableOptions<DataGrid>) {
 		super(ctx, {
@@ -181,7 +91,19 @@ export class DataGrid extends core.Renderable {
 
 		this._vertical.focusable = false;
 
+		this._horizontal = HorizontalScrollBar.make({
+			position: "absolute",
+			left: 0,
+			right: 1,
+			bottom: 0,
+			visible: false,
+			onChange: (position: number): void => {
+				this.scrollTo({ x: position, y: this._offset.y });
+			},
+		});
+
 		this.add(this._vertical);
+		this.add(this._horizontal);
 		this.registerStoreEvents();
 
 		DataGrid.current = this;
@@ -198,10 +120,6 @@ export class DataGrid extends core.Renderable {
 	// The horizontal scrollbar takes a row only when the columns overflow.
 	private get bodyHeight(): number {
 		return Math.max(0, this.height - HEADER_HEIGHT - (this.scrollsX ? 1 : 0));
-	}
-
-	private get thumbY(): number {
-		return this.screenY + this.height - 1;
 	}
 
 	private get bodyWidth(): number {
@@ -268,7 +186,6 @@ export class DataGrid extends core.Renderable {
 		this.drawHeader(buffer, this._grid);
 		this.drawRows(buffer, this._grid);
 		buffer.popScissorRect();
-		this.drawThumb(buffer);
 	}
 
 	private message(): string | null {
@@ -405,6 +322,7 @@ export class DataGrid extends core.Renderable {
 		}
 
 		const bottom: number | null = this.bottomRuleY();
+		const selected: number | null = this.selectedRow();
 
 		if (bottom !== null) {
 			this.forEachColumn(
@@ -423,7 +341,11 @@ export class DataGrid extends core.Renderable {
 			}
 
 			const y: number = this.screenY + HEADER_HEIGHT + index - this._offset.y;
-			if (index === this._hovered) {
+			const isSelected: boolean = index === selected;
+
+			if (isSelected) {
+				buffer.fillRect(this.screenX, y, this.bodyWidth, 1, theme.selected);
+			} else if (index === this._hovered) {
 				buffer.fillRect(this.screenX, y, this.bodyWidth, 1, theme.hover);
 			}
 
@@ -436,7 +358,11 @@ export class DataGrid extends core.Renderable {
 						cell ?? NULL_TEXT,
 						x + CELL_PADDING,
 						y,
-						cell === null ? theme.muted : theme.fg,
+						isSelected
+							? theme.fg_inverse
+							: cell === null
+								? theme.muted
+								: theme.fg,
 						undefined,
 						cell === null
 							? core.TextAttributes.ITALIC
@@ -446,6 +372,13 @@ export class DataGrid extends core.Renderable {
 				},
 			);
 		}
+	}
+
+	private selectedRow(): number | null {
+		return (
+			(this._table === null ? undefined : $selectedRows.get()[this._table]) ??
+			null
+		);
 	}
 
 	// The sort the shown rows have.
@@ -505,37 +438,50 @@ export class DataGrid extends core.Renderable {
 		this.sync();
 	}
 
+	// A thumb drag that strays onto the rows is captured by the grid, so the grid
+	// passes it on to the scrollbar. The scrollbars' own events bubble up here
+	// too, and they have handled those already.
 	protected override onMouseEvent(event: core.MouseEvent): void {
+		const own: boolean = event.target === this;
+
 		switch (event.type) {
 			case "down":
+				if (own) {
+					this._horizontal.release();
+				}
+
 				this.handleHeaderDown(event);
-				this.handleThumbDown(event);
+				this.handleRowDown(event);
 				break;
 			case "up":
 			case "drag-end":
-				this.releaseThumb();
+				if (own) {
+					this._horizontal.release();
+				}
 				break;
 			case "scroll":
 				this.handleScroll(event);
 				break;
 			case "drag":
-				if (this._thumbGrab !== null) {
-					this.dragThumb(event.x);
+				if (own) {
+					this._horizontal.drag(event.x);
 				}
 
-				this._mouseY = event.target === this ? event.y : null;
-
-				this.updateHovered();
+				this.trackHover(event);
 				break;
 			case "over":
 			case "move":
 			case "out":
-				this._mouseY =
-					event.type === "out" || event.target !== this ? null : event.y;
-
-				this.updateHovered();
+				this.trackHover(event);
 				break;
 		}
+	}
+
+	private trackHover(event: core.MouseEvent): void {
+		this._mouseY =
+			event.type === "out" || event.target !== this ? null : event.y;
+
+		this.updateHovered();
 	}
 
 	// Clicking a column name cycles its sort.
@@ -559,94 +505,22 @@ export class DataGrid extends core.Renderable {
 		sortTable(column);
 	}
 
-	private thumb(): Thumb | null {
-		const total: number = this._grid?.totalWidth ?? 0;
-		const track: number = this.bodyWidth;
-
-		if (total <= track || track <= 0) {
-			return null;
-		}
-
-		const width: number = Math.min(
-			track,
-			Math.max(1, Math.round((track * track) / total)),
-		);
-		const max: number = total - track;
-		const start: number = Math.round((this._offset.x / max) * (track - width));
-
-		return { start, width, track, max };
-	}
-
-	private drawThumb(buffer: core.OptimizedBuffer): void {
-		const thumb: Thumb | null = this.thumb();
-
-		if (!thumb) {
-			return;
-		}
-
-		const y: number = this.thumbY;
-
-		for (let cell: number = 0; cell < thumb.width; cell++) {
-			buffer.setCellWithAlphaBlending(
-				this.screenX + thumb.start + cell,
-				y,
-				THUMB,
-				theme.scrollbar_thumb,
-				theme.scrollbar_track,
-			);
-		}
-	}
-
-	private handleThumbDown(event: core.MouseEvent): void {
-		const thumb: Thumb | null = this.thumb();
-		const x: number = event.x - this.screenX;
-
+	// Clicking a row selects it. Clicks on the scrollbars bubble up here too, so
+	// only the grid's own count.
+	private handleRowDown(event: core.MouseEvent): void {
 		if (
-			!thumb ||
 			event.button !== core.MouseButton.LEFT ||
-			event.y !== this.thumbY ||
-			x < 0 ||
-			x >= thumb.track
+			event.target !== this ||
+			event.x >= this.screenX + this.bodyWidth
 		) {
 			return;
 		}
 
-		const onThumb: boolean = x >= thumb.start && x < thumb.start + thumb.width;
+		const index: number | null = this.rowAt(event.y);
 
-		// Clicking the track centres the thumb on the click, then drags from there.
-		this._thumbGrab = onThumb ? x - thumb.start : Math.floor(thumb.width / 2);
-
-		this.dragThumb(event.x);
-	}
-
-	private dragThumb(screenX: number): void {
-		const thumb: Thumb | null = this.thumb();
-
-		if (!thumb || this._thumbGrab === null) {
-			return;
+		if (index !== null) {
+			selectRow(index);
 		}
-
-		const room: number = thumb.track - thumb.width;
-		const start: number = clamp(
-			screenX - this.screenX - this._thumbGrab,
-			0,
-			room,
-		);
-
-		this.scrollTo({
-			x: room ? Math.round((start / room) * thumb.max) : 0,
-			y: this._offset.y,
-		});
-	}
-
-	private releaseThumb(): void {
-		if (this._thumbGrab === null) {
-			return;
-		}
-
-		this._thumbGrab = null;
-
-		this.requestRender();
 	}
 
 	private handleScroll(event: core.MouseEvent): void {
@@ -693,15 +567,21 @@ export class DataGrid extends core.Renderable {
 
 	private sync(): void {
 		const grid: Grid | null = this._grid;
-
-		const bottom: number = this.scrollsX ? 1 : 0;
+		const scrollsX: boolean = this.scrollsX;
+		const bottom: number = scrollsX ? 1 : 0;
 
 		if (this._vertical.bottom !== bottom) {
 			this._vertical.bottom = bottom;
 		}
 
+		if (this._horizontal.visible !== scrollsX) {
+			this._horizontal.visible = scrollsX;
+		}
+
 		this._vertical.scrollSize = grid?.cells.length ?? 0;
 		this._vertical.viewportSize = this.bodyHeight;
+		this._horizontal.scrollSize = grid?.totalWidth ?? 0;
+		this._horizontal.viewportSize = this.bodyWidth;
 
 		this.scrollTo(this._offset);
 	}
@@ -717,6 +597,7 @@ export class DataGrid extends core.Renderable {
 			y: clamp(position.y, 0, maxY),
 		};
 		this._vertical.scrollPosition = this._offset.y;
+		this._horizontal.scrollPosition = this._offset.x;
 
 		if (this._table !== null) {
 			this._positions.set(this._table, {
@@ -774,6 +655,9 @@ export class DataGrid extends core.Renderable {
 				this.update();
 			}),
 			$sorts.listen((): void => {
+				this.requestRender();
+			}),
+			$selectedRows.listen((): void => {
 				this.requestRender();
 			}),
 			(): void => {

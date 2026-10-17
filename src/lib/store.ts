@@ -54,6 +54,12 @@ export const $tableData = nanostores.atom<Readonly<Record<string, TableData>>>(
 // The sort each open table asked for, set as soon as a header is clicked.
 export const $sorts = nanostores.atom<Readonly<Record<string, Sort>>>({});
 
+// The selected row of each open table, as an index into its loaded rows. New
+// rows clear it.
+export const $selectedRows = nanostores.atom<Readonly<Record<string, number>>>(
+	{},
+);
+
 export const $activeTableData: nanostores.ReadableAtom<TableData | undefined> =
 	nanostores.computed(
 		[$activeTable, $tableData],
@@ -64,12 +70,19 @@ export const $activeTableData: nanostores.ReadableAtom<TableData | undefined> =
 	);
 
 // Replaces one entry of a record atom, or removes it when value is undefined.
+// An unchanged entry leaves the atom as it is, so listeners aren't notified.
 export function setEntry<T>(
 	store: nanostores.WritableAtom<Readonly<Record<string, T>>>,
 	name: string,
 	value: T | undefined,
 ): void {
-	const { [name]: _, ...rest }: Readonly<Record<string, T>> = store.get();
+	const entries: Readonly<Record<string, T>> = store.get();
+
+	if (entries[name] === value) {
+		return;
+	}
+
+	const { [name]: _, ...rest }: Readonly<Record<string, T>> = entries;
 
 	store.set(value === undefined ? rest : { ...rest, [name]: value });
 }
