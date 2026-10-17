@@ -1,11 +1,11 @@
 # mensa
 
-Terminal database client for Postgres and MySQL, built with `@opentui/core` and `nanostores` on Bun. Linux only. The README documents every feature, key and config option.
+Terminal database client for Postgres and MySQL, built with `@opentui/core` and `nanostores` on Bun. Linux and macOS. The README documents every feature, key and config option.
 
 ## Commands
 
 - `bun run dev` runs the app with watch mode.
-- `bun run build` compiles a single binary to `dist/mensa` and copies `install.sh` and the icon beside it.
+- `bun run build` compiles a binary per target in `TARGETS` to `dist/mensa-<os>-<arch>` and copies `install.sh` and the icon beside them. It needs `bun install --os="*" --cpu="*"`, so OpenTUI's native package for each target is installed. `install.sh` picks the binary from `uname`.
 - `bun run format` runs Biome. Run `bunx tsc --noEmit` and `bunx biome check src/` before finishing a change. There are no tests.
 
 ## Architecture

@@ -55,15 +55,17 @@ Mouse controls:
 
 ## Installation
 
-Requires x86_64 Linux and [Bun](https://bun.com).
+Runs on Linux and macOS, on x86_64 and arm64. Building requires [Bun](https://bun.com).
 
 ```bash
-bun install
+bun install --os="*" --cpu="*"
 bun run build
 bun run install:app
 ```
 
-This installs the binary to `~/.local/bin/mensa` and a desktop entry to `~/.local/share/applications`.
+`bun install --os="*" --cpu="*"` installs OpenTUI's native library for every platform, since the build compiles a binary for each one: `dist/mensa-linux-x64`, `mensa-linux-arm64`, `mensa-darwin-x64` and `mensa-darwin-arm64`.
+
+The install script picks the binary for your system and installs it to `~/.local/bin/mensa`. On Linux it also adds a desktop entry to `~/.local/share/applications`. On macOS it removes the quarantine attribute, so a downloaded binary can run.
 
 ## Development
 

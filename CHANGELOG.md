@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Added
+
+- macOS and arm64 builds. `bun run build` compiles `dist/mensa-linux-x64`, `mensa-linux-arm64`, `mensa-darwin-x64` and `mensa-darwin-arm64`, and needs `bun install --os="*" --cpu="*"` first, so OpenTUI's native library is there for each platform. The install script picks the binary for the system it runs on. On macOS it removes the quarantine attribute and skips the desktop entry and icon.
+
 ## 0.2.0
 
 ### Added
