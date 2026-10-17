@@ -2,6 +2,7 @@ import * as core from "@opentui/core";
 import { theme } from "../lib/config";
 import { CLOSE_ICON, TAB_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
+import { confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
@@ -207,14 +208,18 @@ class TabBar extends core.Renderable {
 			return;
 		}
 
-		if (event.button === core.MouseButton.MIDDLE) {
-			closeTable(hit.table);
-		} else if (event.button === core.MouseButton.LEFT) {
-			if (hit.close) {
-				closeTable(hit.table);
-			} else {
-				openTable(hit.table);
-			}
+		// Leaving the active tab, which holds the edited row, asks first when
+		// the row has unsaved changes.
+		const left: boolean = event.button === core.MouseButton.LEFT;
+
+		if (event.button === core.MouseButton.MIDDLE || (left && hit.close)) {
+			confirmDiscardIf(hit.table === this._active, (): void =>
+				closeTable(hit.table),
+			);
+		} else if (left) {
+			confirmDiscardIf(hit.table !== this._active, (): void =>
+				openTable(hit.table),
+			);
 		}
 	}
 

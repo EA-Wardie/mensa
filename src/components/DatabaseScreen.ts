@@ -3,6 +3,7 @@ import { ctx } from "../lib/context";
 import { DatabaseFooter } from "./DatabaseFooter";
 import { DataGrid } from "./DataGrid";
 import { Flex } from "./Flex";
+import { RowEditor } from "./RowEditor";
 import { TableSidebar } from "./TableSidebar";
 import { TableTabs } from "./TableTabs";
 
@@ -25,6 +26,7 @@ export class DatabaseScreen {
 				components: [TableTabs.make(), DataGrid.make(), DatabaseFooter.make()],
 			}),
 		);
+		this._component.add(RowEditor.host());
 	}
 
 	public static make(): core.BoxRenderable {

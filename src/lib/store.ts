@@ -1,5 +1,6 @@
 import * as nanostores from "nanostores";
 import { type ConnectionConfig, connections } from "./config";
+import { clamp } from "./math";
 
 export type Screen = "connections" | "database";
 
@@ -11,6 +12,33 @@ export type SortDirection = "asc" | "desc";
 export interface Sort {
 	column: string;
 	direction: SortDirection;
+}
+
+// How the row editor edits a column. A choice's labels are shown beside its
+// options, such as true for MySQL's 1, and may be left out.
+export type ColumnEdit =
+	| { as: "text"; long: boolean }
+	| { as: "json" }
+	| { as: "choice"; options: string[]; labels: string[] }
+	| { as: "readonly"; reason: string };
+
+export interface ColumnMeta {
+	name: string;
+	// The type as the database names it, shown in the editor.
+	typeLabel: string;
+	// The type a saved value is cast to. Without a length, since a cast to
+	// varchar(5) would cut a longer value instead of failing.
+	castType: string;
+	nullable: boolean;
+	edit: ColumnEdit;
+}
+
+export interface TableMeta {
+	// A Map, since a column can be named like an Object property.
+	columns: Map<string, ColumnMeta>;
+	primaryKey: string[];
+	// Why the table's rows can't be saved, or null.
+	readOnly: string | null;
 }
 
 // A loaded table's sort is the one its rows have, which lags behind $sorts
@@ -25,8 +53,23 @@ export type TableData =
 			rows: Value[][];
 			truncated: boolean;
 			sort: Sort | null;
+			// What the row editor needs. When it couldn't be read, it has no
+			// columns and is read only.
+			meta: TableMeta;
 	  }
 	| { status: "error"; message: string };
+
+export type LoadedTable = Extract<TableData, { status: "loaded" }>;
+
+// The row the editor has open. rows is the loaded array row indexes into, so
+// a reload, which replaces it, shows the row is gone.
+export interface EditorTarget {
+	table: string;
+	rows: Value[][];
+	row: number;
+	// The column to focus, or null for the first editable one.
+	column: string | null;
+}
 
 export const $screen = nanostores.atom<Screen>("connections");
 
@@ -92,6 +135,27 @@ export function setEntry<T>(
 
 	store.set(value === undefined ? rest : { ...rest, [name]: value });
 }
+
+// Moves the selection by step through the items, stopping at the ends.
+export function moveSelection<T>(
+	items: nanostores.ReadableAtom<readonly T[]>,
+	selected: nanostores.WritableAtom<T | null>,
+	step: number,
+): void {
+	const list: readonly T[] = items.get();
+	const current: T | null = selected.get();
+	const index: number = current === null ? -1 : list.indexOf(current);
+	const next: number = clamp(index + step, 0, list.length - 1);
+
+	if (next >= 0) {
+		selected.set(list[next] ?? null);
+	}
+}
+
+export const $editor = nanostores.atom<EditorTarget | null>(null);
+
+// Whether the open editor has unsaved changes.
+export const $editorDirty = nanostores.atom<boolean>(false);
 
 export const $dialogOpen = nanostores.atom<boolean>(false);
 

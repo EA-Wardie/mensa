@@ -30,11 +30,31 @@ export const CONNECTIONS_WIDTH: number = 72;
 
 export const TAB_WIDTH: number = 24;
 
+export const EDITOR_WIDTH: number = 48;
+
+// Longer values are edited in a textarea, which wraps them.
+export const INPUT_MAX_LENGTH: number = 200;
+
+export const TEXTAREA_MIN_ROWS: number = 3;
+
+export const TEXTAREA_MAX_ROWS: number = 10;
+
+export const CHOICE_MAX_ROWS: number = 6;
+
+// varchar columns longer than this are edited in a textarea.
+export const LONG_TEXT_LENGTH: number = 255;
+
 export const MAX_COLUMN_WIDTH: number = 40;
 
 export const ELLIPSIS: string = "…";
 
 export const CLOSE_ICON: string = "󰅖";
+
+export const EDIT_ICON: string = "󰏫";
+
+export const KEY_ICON: string = "󰌋";
+
+export const SAVE_ICON: string = "󰆓";
 
 export const SORT_ASC_ICON: string = "󰅃";
 

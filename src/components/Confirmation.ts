@@ -17,6 +17,9 @@ export class Confirmation {
 	private _options: Options;
 	private _component: core.BoxRenderable;
 	private _dialog: core.BoxRenderable;
+	// What had the focus, which the dialog takes while it's open and gives
+	// back when it closes.
+	private _focused: core.Renderable | null;
 
 	constructor(options: Options) {
 		this._options = options;
@@ -45,6 +48,9 @@ export class Confirmation {
 		this.addText(this._options.heading, core.TextAttributes.BOLD);
 		this.addText(this._options.description);
 		this.addFooter();
+
+		this._focused = ctx.currentFocusedRenderable;
+		this._focused?.blur();
 
 		ctx.keyInput.on("keypress", this.onKeypress);
 		ctx.root.add(this._component);
@@ -122,5 +128,9 @@ export class Confirmation {
 		this._component.destroyRecursively();
 
 		$dialogOpen.set(false);
+
+		if (this._focused && !this._focused.isDestroyed) {
+			this._focused.focus();
+		}
 	}
 }

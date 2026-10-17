@@ -1,9 +1,37 @@
 # Changelog
 
+## 0.2.3
+
+### Added
+
+- `bun run archive` packs the built macOS and Linux x64 binaries, each with the install script and the icon, into `dist/Release-darwin-x64 <version>.tar.xz` and `dist/Release-linux-x64 <version>.tar.xz`, with the version from `package.json`. It stops with a message when `bun run build` hasn't made the files yet.
+- A row editor. Double clicking a cell, or `E` on the selected row, opens the row in a sidebar beside the grid, with the clicked column's field focused and scrolled into view. Each column gets a field by its type: an input, a textarea for long or multi-line text, a list for booleans and enums (MySQL's `tinyint(1)` shows `1 true` and `0 false`), and a textarea with JSON pretty printed. JSON must parse before it saves, and only reindenting it isn't a change. A nullable column has a `NULL` toggle, also `Ctrl+N`, so an empty text and the text `NULL` stay strings. `Tab` and `Shift+Tab` move between fields, `Ctrl+S` or Save saves, and `Escape`, Cancel or the close button close it, asking first when there are unsaved changes. Save writes only the changed columns, matched by the primary key, and puts the row the database stored in the grid, keeping the scroll and the selection. A database error, such as a value too long for its column, shows in the sidebar and keeps the edits.
+- Rows of views, of tables without a primary key and of tables whose key can't be matched (a MySQL binary key) open read only, with a note saying why. Generated and identity always columns are read only, as are MySQL binary, bit and spatial values, and values with control characters other than tabs and newlines.
+
+### Changed
+
+- While the editor is open, its keys are its own, so the other shortcuts, including `Q` and `C`, wait until it closes. Clicking a row doesn't change the selection, which stays on the edited row.
+- Sorting, switching to another tab, closing the edited tab and opening another table from the sidebar ask before discarding unsaved changes to the row.
+- A focused textarea pauses the shortcuts too, not only an input.
+
+### Fixed
+
+- The selected and hovered rows fill the grid's full width while the rows fit and the vertical scrollbar is hidden, instead of stopping one column short of the right edge.
+
+### Internal
+
+- Each `Dialect` has `describe`, which reads what the editor needs from the catalog: the type to show and the type to cast to, nullability, enum labels, generated columns, the primary key in key order and why a table can't be saved. Postgres reads `pg_catalog`, and MySQL `information_schema`, taking the key from the `PRIMARY` index, since `column_key` says `PRI` for a unique key too. It runs alongside the column list on a table's first load, and its result is kept in the loaded `TableData` as `meta`. When it fails, `meta` has no columns and says why the rows are read only.
+- `updateRow` builds one `UPDATE` of the changed columns with every value as a parameter. On Postgres each is cast from text to the column's type without its length, since a cast to `varchar(5)` would cut a longer value instead of failing, and the row comes back with `RETURNING`. `char(n)` and `bit(n)` are cast to `bpchar` and `varbit`, since `character` and `bit` without a length mean a length of 1. MySQL selects the row again by its new key, since its affected row count leaves out rows that matched without changing. The row is put into a new rows array, so the grid remeasures it.
+- `$editor` holds the edited table, its rows array, the row and the column to focus, and `$editorDirty` whether it has unsaved changes. The editor stays open only while its table is active with the same rows array, so a reload, a sort, a saved row, closing the tab or the connection all close it. `lib/editor.ts` closes it through its own store listeners, and has `confirmDiscard`, which closes the editor before an action that leaves its row, asking first when it has changes. It closes a clean editor too, since a sort keeps the old rows on screen while it loads. The editor tracks which fields changed as each one does, so a keystroke only checks its own field.
+- `Confirmation` takes the focus while it's open and gives it back when it closes, instead of the shortcuts blurring it.
+- `DoubleClick` in `lib/clicks.ts` tells double clicks for both `List` and `DataGrid`, and `moveSelection` moved to `lib/store.ts`, so choice fields use it too.
+- `reformatJson` in `lib/format.ts` reindents JSON without parsing it, so large numbers and `1.0` keep their digits. It copies strings and literals whole, and a field compacts its original once, since it runs on every keystroke.
+
 ## 0.2.2
 
 ### Changed
 
+- The database screen's sidebar starts with a `📒 Mensa` header above the connection's name. The start screen's title uses the same `📒` icon instead of the database icon.
 - Switching tabs selects the tab's table in the sidebar, scrolling it into view. This also happens when closing a tab switches to another, and when saved tabs reopen. Closing the last tab keeps the sidebar's selection.
 
 ### Fixed

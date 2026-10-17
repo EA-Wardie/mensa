@@ -1,7 +1,9 @@
 import * as core from "@opentui/core";
+import { DoubleClick } from "../lib/clicks";
 import { theme } from "../lib/config";
 import { SORT_ASC_ICON, SORT_DESC_ICON } from "../lib/consts";
 import { ctx } from "../lib/context";
+import { confirmDiscard, editRow } from "../lib/editor";
 import { displayText, fitText, NULL_TEXT } from "../lib/format";
 import {
 	CELL_PADDING,
@@ -15,6 +17,7 @@ import { clamp } from "../lib/math";
 import {
 	$activeTable,
 	$activeTableData,
+	$editor,
 	$openTables,
 	$selectedRows,
 	$sorts,
@@ -28,6 +31,12 @@ import { HorizontalScrollBar } from "./HorizontalScrollBar";
 interface Position {
 	x: number;
 	y: number;
+}
+
+// A clicked cell, to tell a double click.
+interface CellClick {
+	row: number;
+	column: number | null;
 }
 
 // A tab's scroll position, and the sort its rows had then.
@@ -66,6 +75,11 @@ export class DataGrid extends core.Renderable {
 	>();
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
+	// Reset when the rows change, since a row index means another row then.
+	private _clicks: DoubleClick<CellClick> = new DoubleClick<CellClick>(
+		(a: CellClick, b: CellClick): boolean =>
+			a.row === b.row && a.column === b.column,
+	);
 
 	constructor(options: core.RenderableOptions<DataGrid>) {
 		super(ctx, {
@@ -176,6 +190,8 @@ export class DataGrid extends core.Renderable {
 		}
 
 		this.drawRules(buffer);
+		this.drawHighlights(buffer, this._grid);
+
 		buffer.pushScissorRect(
 			this.screenX,
 			this.screenY,
@@ -185,6 +201,7 @@ export class DataGrid extends core.Renderable {
 
 		this.drawHeader(buffer, this._grid);
 		this.drawRows(buffer, this._grid);
+
 		buffer.popScissorRect();
 	}
 
@@ -306,6 +323,44 @@ export class DataGrid extends core.Renderable {
 		);
 	}
 
+	// The hovered and selected rows, drawn before the clip, so they take the
+	// scrollbar's column too while it's hidden, like the rules do.
+	private drawHighlights(buffer: core.OptimizedBuffer, grid: Grid): void {
+		const selected: number | null = this.selectedRow();
+
+		if (this._hovered !== selected) {
+			this.fillRow(buffer, grid, this._hovered, theme.hover);
+		}
+
+		this.fillRow(buffer, grid, selected, theme.selected);
+	}
+
+	private fillRow(
+		buffer: core.OptimizedBuffer,
+		grid: Grid,
+		index: number | null,
+		color: core.RGBA,
+	): void {
+		const shown: number = index === null ? -1 : index - this._offset.y;
+
+		if (
+			index === null ||
+			index >= grid.cells.length ||
+			shown < 0 ||
+			shown >= this.bodyHeight
+		) {
+			return;
+		}
+
+		buffer.fillRect(
+			this.screenX,
+			this.screenY + HEADER_HEIGHT + shown,
+			this._vertical.visible ? this.bodyWidth : this.width,
+			1,
+			color,
+		);
+	}
+
 	private drawRows(buffer: core.OptimizedBuffer, grid: Grid): void {
 		const end: number = Math.min(
 			grid.cells.length,
@@ -345,12 +400,6 @@ export class DataGrid extends core.Renderable {
 			const y: number = this.screenY + HEADER_HEIGHT + index - this._offset.y;
 			const isSelected: boolean = index === selected;
 
-			if (isSelected) {
-				buffer.fillRect(this.screenX, y, this.bodyWidth, 1, theme.selected);
-			} else if (index === this._hovered) {
-				buffer.fillRect(this.screenX, y, this.bodyWidth, 1, theme.hover);
-			}
-
 			this.forEachColumn(
 				grid,
 				(column: number, x: number, separator: number): void => {
@@ -376,7 +425,7 @@ export class DataGrid extends core.Renderable {
 		}
 	}
 
-	private selectedRow(): number | null {
+	public selectedRow(): number | null {
 		return (
 			(this._table === null ? undefined : $selectedRows.get()[this._table]) ??
 			null
@@ -504,23 +553,37 @@ export class DataGrid extends core.Renderable {
 			return;
 		}
 
-		sortTable(column);
+		// Sorting reloads the rows, which closes the row editor.
+		confirmDiscard((): void => {
+			sortTable(column);
+		});
 	}
 
-	// Clicking a row selects it. Clicks on the scrollbars bubble up here too, so
-	// only the grid's own count.
+	// Clicking a row selects it, and double clicking a cell edits its row. While
+	// the editor is open, the selection stays on its row. Clicks on the
+	// scrollbars bubble up here too, so only the grid's own count.
 	private handleRowDown(event: core.MouseEvent): void {
-		if (
+		const index: number | null =
 			event.button !== core.MouseButton.LEFT ||
 			event.target !== this ||
 			event.x >= this.screenX + this.bodyWidth
-		) {
+				? null
+				: this.rowAt(event.y);
+
+		if (index === null) {
+			this._clicks.reset();
+
 			return;
 		}
 
-		const index: number | null = this.rowAt(event.y);
+		const column: number | null = this.columnAt(event.x);
 
-		if (index !== null) {
+		if (this._clicks.click({ row: index, column: column })) {
+			editRow(
+				index,
+				column === null ? null : (this.columnNames()[column] ?? null),
+			);
+		} else if ($editor.get() === null) {
 			selectRow(index);
 		}
 	}
@@ -633,6 +696,10 @@ export class DataGrid extends core.Renderable {
 		}
 
 		this._table = table;
+		if (data !== this._data) {
+			this._clicks.reset();
+		}
+
 		this._data = data;
 		this._grid = grid;
 

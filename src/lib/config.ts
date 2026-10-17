@@ -37,6 +37,7 @@ export interface ThemeType {
 	active: RGBA;
 	pressed: RGBA;
 	input_bg: RGBA;
+	input_focused_bg: RGBA;
 	transparent: RGBA;
 	scrollbar_thumb: RGBA;
 	scrollbar_track: RGBA;
@@ -490,6 +491,7 @@ function makeTheme(config: unknown): ThemeType {
 		active: fg,
 		pressed: withAlpha(fg, 0.75),
 		input_bg: withAlpha(fg, 0.25),
+		input_focused_bg: withAlpha(fg, 0.4),
 		transparent: TRANSPARENT,
 		scrollbar_thumb: withAlpha(fg, 0.5),
 		scrollbar_track: TRANSPARENT,

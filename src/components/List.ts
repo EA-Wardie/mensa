@@ -1,15 +1,11 @@
 import * as core from "@opentui/core";
 import type { ReadableAtom, WritableAtom } from "nanostores";
-import { doubleClickTimeout, theme } from "../lib/config";
+import { DoubleClick } from "../lib/clicks";
+import { theme } from "../lib/config";
 import { ctx } from "../lib/context";
 import { displayText, fitText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
-
-interface Click<T> {
-	item: T;
-	time: number;
-}
 
 interface Options<T> extends core.RenderableOptions<List<T>> {
 	items: ReadableAtom<readonly T[]>;
@@ -28,7 +24,7 @@ export class List<T> extends core.Renderable {
 	private _offset: number = 0;
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
-	private _lastClick: Click<T> | null = null;
+	private _clicks: DoubleClick<T> = new DoubleClick<T>();
 
 	constructor(options: Options<T>) {
 		super(ctx, options);
@@ -179,17 +175,12 @@ export class List<T> extends core.Renderable {
 		const item: T | undefined = index === null ? undefined : this._items[index];
 
 		if (item === undefined || event.button !== core.MouseButton.LEFT) {
-			this._lastClick = null;
+			this._clicks.reset();
 
 			return;
 		}
 
-		const lastClick: Click<T> | null = this._lastClick;
-		const isDouble: boolean =
-			lastClick?.item === item &&
-			Date.now() - lastClick.time < doubleClickTimeout;
-
-		this._lastClick = isDouble ? null : { item: item, time: Date.now() };
+		const isDouble: boolean = this._clicks.click(item);
 
 		this._options.selected.set(item);
 

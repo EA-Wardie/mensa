@@ -6,6 +6,22 @@ const SEGMENTER: Intl.Segmenter = new Intl.Segmenter(undefined, {
 
 export const NULL_TEXT: string = "NULL";
 
+const WHITESPACE: ReadonlySet<string> = new Set<string>([
+	" ",
+	"\t",
+	"\n",
+	"\r",
+]);
+
+const STRUCTURE: ReadonlySet<string> = new Set<string>([
+	"{",
+	"}",
+	"[",
+	"]",
+	",",
+	":",
+]);
+
 // Takes the text's width when the caller has already measured it.
 export function fitText(
 	text: string,
@@ -57,4 +73,97 @@ export function displayText(text: string): string {
 		.replace(/\r?\n/g, "↵")
 		.replace(/\t/g, "⇥")
 		.replace(CONTROL_CHARACTERS, controlPicture);
+}
+
+// Re-indents JSON text without parsing it, so numbers like
+// 12345678901234567890 or 1.0 and the escapes in strings stay as they were.
+// An empty indent gives the compact form. The text should be valid JSON.
+// Strings and literals are copied whole, since it runs on every keystroke in a
+// JSON field.
+export function reformatJson(text: string, indent: string): string {
+	const parts: string[] = [];
+	let depth: number = 0;
+	let index: number = 0;
+	// Whether the last part opened an empty object or array.
+	let emptyOpen: boolean = false;
+
+	const newline: () => string = (): string =>
+		indent ? `\n${indent.repeat(depth)}` : "";
+
+	while (index < text.length) {
+		const character: string = text[index] ?? "";
+
+		if (WHITESPACE.has(character)) {
+			index++;
+
+			continue;
+		}
+
+		if (character === '"') {
+			let end: number = index + 1;
+
+			while (end < text.length && text[end] !== '"') {
+				end += text[end] === "\\" ? 2 : 1;
+			}
+
+			parts.push(text.slice(index, end + 1));
+			emptyOpen = false;
+			index = end + 1;
+
+			continue;
+		}
+
+		if (!STRUCTURE.has(character)) {
+			let end: number = index + 1;
+
+			while (
+				end < text.length &&
+				!STRUCTURE.has(text[end] ?? "") &&
+				!WHITESPACE.has(text[end] ?? "") &&
+				text[end] !== '"'
+			) {
+				end++;
+			}
+
+			parts.push(text.slice(index, end));
+			emptyOpen = false;
+			index = end;
+
+			continue;
+		}
+
+		if (character === "{" || character === "[") {
+			let ahead: number = index + 1;
+
+			while (WHITESPACE.has(text[ahead] ?? "")) {
+				ahead++;
+			}
+
+			// An empty object or array stays on one line.
+			emptyOpen = text[ahead] === (character === "{" ? "}" : "]");
+
+			if (emptyOpen) {
+				parts.push(character);
+			} else {
+				depth++;
+				parts.push(character + newline());
+			}
+		} else if (character === "}" || character === "]") {
+			if (!emptyOpen) {
+				depth = Math.max(0, depth - 1);
+				parts.push(newline());
+			}
+
+			parts.push(character);
+			emptyOpen = false;
+		} else if (character === ",") {
+			parts.push(character + newline());
+		} else {
+			parts.push(indent ? ": " : ":");
+		}
+
+		index++;
+	}
+
+	return parts.join("");
 }

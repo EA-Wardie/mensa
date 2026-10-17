@@ -1,22 +1,23 @@
-import * as core from "@opentui/core";
-import type { ReadableAtom, WritableAtom } from "nanostores";
+import type * as core from "@opentui/core";
 import { Confirmation } from "../components/Confirmation";
 import { DataGrid } from "../components/DataGrid";
 import type { ConnectionConfig } from "./config";
 import { QUIT_TIMEOUT } from "./consts";
 import { ctx } from "./context";
 import { closeClient } from "./database";
-import { clamp } from "./math";
+import { editRow } from "./editor";
 import { connect, disconnect } from "./session";
 import { flushState } from "./state";
 import {
 	$connection,
 	$connections,
 	$dialogOpen,
+	$editor,
 	$screen,
 	$selectedConnection,
 	$selectedTable,
 	$tables,
+	moveSelection,
 	type Screen,
 } from "./store";
 import { closeTable, cycleTable, openTable, selectRow } from "./tabs";
@@ -29,21 +30,6 @@ interface Shortcut {
 	description: string;
 	screen?: Screen;
 	run: Run;
-}
-
-function moveSelection<T>(
-	items: ReadableAtom<readonly T[]>,
-	selected: WritableAtom<T | null>,
-	step: number,
-): void {
-	const list: readonly T[] = items.get();
-	const current: T | null = selected.get();
-	const index: number = current === null ? -1 : list.indexOf(current);
-	const next: number = clamp(index + step, 0, list.length - 1);
-
-	if (next >= 0) {
-		selected.set(list[next] ?? null);
-	}
 }
 
 // Bun's SQL close() waits for a pending connect to time out, and the pool can
@@ -191,6 +177,18 @@ export const SHORTCUTS = {
 		screen: "database",
 		run: withGrid((grid: DataGrid): void => grid.scrollColumns(1)),
 	},
+	editRow: {
+		key: "e",
+		description: "Edit the selected row",
+		screen: "database",
+		run: withGrid((grid: DataGrid): void => {
+			const row: number | null = grid.selectedRow();
+
+			if (row !== null) {
+				editRow(row, null);
+			}
+		}),
+	},
 	clearRow: {
 		key: "escape",
 		description: "Clear the selected row",
@@ -255,16 +253,13 @@ export function shortcutLabel({ key }: Pick<Shortcut, "key">): string {
 }
 
 export function registerKeyboardShortcuts(): void {
-	$dialogOpen.listen((open: boolean): void => {
-		if (open) {
-			ctx.currentFocusedRenderable?.blur();
-		}
-	});
-
 	ctx.keyInput.on("keypress", (key: core.KeyEvent): void => {
+		// The row editor handles its own keys, and an input or a textarea takes
+		// any other.
 		if (
 			$dialogOpen.get() ||
-			ctx.currentFocusedRenderable instanceof core.InputRenderable ||
+			$editor.get() !== null ||
+			ctx.currentFocusedEditor !== null ||
 			key.meta ||
 			key.option
 		) {

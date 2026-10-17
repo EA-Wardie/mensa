@@ -1,10 +1,17 @@
 import * as core from "@opentui/core";
 import { theme } from "../lib/config";
-import { CLOSE_ICON, DATABASE_ICON, SIDEBAR_WIDTH } from "../lib/consts";
+import {
+	APP_TITLE,
+	CLOSE_ICON,
+	DATABASE_ICON,
+	SIDEBAR_WIDTH,
+} from "../lib/consts";
 import { ctx } from "../lib/context";
+import { confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
 import { SHORTCUTS } from "../lib/shortcuts";
 import {
+	$activeTable,
 	$connection,
 	$openTables,
 	$schema,
@@ -53,7 +60,7 @@ export class TableSidebar {
 
 		header.add(
 			new core.TextRenderable(ctx, {
-				content: "📒 Mensa",
+				content: APP_TITLE,
 				fg: theme.fg,
 				attributes: core.TextAttributes.BOLD,
 				selectable: false,
@@ -125,7 +132,12 @@ export class TableSidebar {
 				label: (table: string): string => `󰓫 ${table}`,
 				bold: (table: string): boolean => $openTables.get().includes(table),
 				redrawOn: [$openTables],
-				onActivate: openTable,
+				// Another table's tab would close the row editor.
+				onActivate: (table: string): void => {
+					confirmDiscardIf(table !== $activeTable.get(), (): void =>
+						openTable(table),
+					);
+				},
 			}),
 		);
 	}

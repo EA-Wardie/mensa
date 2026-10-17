@@ -3,10 +3,11 @@
 	"module": "src/main.ts",
 	"type": "module",
 	"private": false,
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"scripts": {
 		"dev": "bun run --watch src/main.ts",
 		"build": "bun run src/build.ts",
+		"archive": "bun run src/archive.ts",
 		"install:app": "bash dist/install.sh",
 		"format": "bunx biome check --write src/"
 	},

@@ -19,6 +19,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that.
 - Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. The database sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column the database can't sort, such as Postgres `json`, is reported in the footer and the rows stay as they were.
 - Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
+- Edit a row in a sidebar by double clicking one of its cells, or with `E` on the selected row. Every column has a field: an input, or a textarea for long and multi-line text, a list to pick from for booleans and enums, and a textarea with the value pretty printed for JSON, which must parse before it saves. A nullable column has a `NULL` toggle, so an empty text and the text `NULL` stay strings. Save writes only the columns that changed, matched by the primary key, and the grid shows the row as the database stored it. Rows of views and of tables without a primary key open read only. Generated columns are read only, as are MySQL binary, bit and spatial values. Editing on Postgres needs version 12 or later.
 - Several tables open at once, as tabs with a close button. The sidebar selects the active tab's table. Each tab remembers its scroll position, and each connection remembers its open tabs.
 - Values shown as the database formats them as text, so a date has no time and a Postgres `timestamptz` is in the session's time zone. MySQL binary and blob values are shown as hex, such as `0x00FF`, bits in binary, such as `101`, and spatial values as text, such as `POINT(1 2)`. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
 - mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
@@ -26,7 +27,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - A themeable UI, configurable through a user config file.
 - First party mouse support.
 
-This version only displays data. It can't edit data or run queries.
+This version can edit existing rows, but can't insert or delete rows or run queries.
 
 ## Controls
 
@@ -40,6 +41,12 @@ This version only displays data. It can't edit data or run queries.
 | `PageUp`, `PageDown`, `Home`, `End` | Tables | Scroll the rows |
 | `Left` / `H`, `Right` / `L` | Tables | Scroll the columns |
 | `Escape` | Tables | Clear the selected row |
+| `E` | Tables | Edit the selected row |
+| `Tab`, `Shift+Tab` | Editor | Next and previous field |
+| `Up` / `K`, `Down` / `J` | Editor | Pick from a boolean or enum list |
+| `Ctrl+N` | Editor | Toggle the field's `NULL` |
+| `Ctrl+S` | Editor | Save the changed columns |
+| `Escape` | Editor | Close, asking first when there are unsaved changes |
 | `C` | Tables | Close the connection, after confirming |
 | `Q` | Everywhere | Quit, after confirming |
 | `Return`, `Escape` | Confirmation | Confirm or cancel |
@@ -49,6 +56,7 @@ Mouse controls:
 - Double click a connection to connect, or a table to open it.
 - Click a tab to switch to it. Click its close button or middle click it to close it. The wheel scrolls the tabs when they don't all fit.
 - Click a row to select it. `Escape` clears the selection.
+- Double click a cell to edit its row, with that column's field focused. Click a field to focus it, and a field's `NULL` to toggle it. While the editor is open, other keys are paused and clicking a row doesn't change the selection. Sorting, switching or closing the tab, or opening another table asks first when the row has unsaved changes.
 - Click a column header to sort by it. Each click moves it from no sort to ascending, then descending, then back to no sort. Sorting another column replaces the current sort.
 - The mouse wheel scrolls the lists and the grid's rows. Shift with the wheel, or a horizontal wheel, scrolls the grid's columns. You can also drag the scrollbars.
 - The close button in the sidebar header closes the connection.
@@ -64,6 +72,8 @@ bun run install:app
 ```
 
 `bun install --os="*" --cpu="*"` installs OpenTUI's native library for every platform, since the build compiles a binary for each one: `dist/mensa-linux-x64`, `mensa-linux-arm64`, `mensa-darwin-x64` and `mensa-darwin-arm64`.
+
+`bun run archive` then packs `dist/mensa-darwin-x64` and `dist/mensa-linux-x64`, each with the install script and the icon, into `dist/Release-darwin-x64 <version>.tar.xz` and `dist/Release-linux-x64 <version>.tar.xz` for a release. Extract one and run `install.sh` from it.
 
 The install script picks the binary for your system and installs it to `~/.local/bin/mensa`. On Linux it also adds a desktop entry to `~/.local/share/applications`. On macOS it removes the quarantine attribute, so a downloaded binary can run.
 
