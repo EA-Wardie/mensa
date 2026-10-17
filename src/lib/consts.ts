@@ -14,7 +14,9 @@ export const APP_TITLE: string = `${DATABASE_ICON} Mensa`;
 
 export const DEFAULT_ROW_LIMIT: number = 1000;
 
-export const DEFAULT_PORT: number = 5432;
+export const DEFAULT_POSTGRES_PORT: number = 5432;
+
+export const DEFAULT_MYSQL_PORT: number = 3306;
 
 export const MAX_PORT: number = 65535;
 

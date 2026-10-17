@@ -11,6 +11,7 @@ import {
 	$connecting,
 	$connection,
 	$notice,
+	$schema,
 	$screen,
 	$selectedTable,
 	$tables,
@@ -42,6 +43,7 @@ export async function connect(connection: ConnectionConfig): Promise<void> {
 		return;
 	}
 
+	$schema.set(opened.schema);
 	$tables.set(opened.tables);
 	$selectedTable.set(opened.tables[0] ?? null);
 	$connection.set(connection);
@@ -60,6 +62,7 @@ export async function disconnect(): Promise<void> {
 	resetTabs();
 	$connection.set(null);
 	$notice.set("");
+	$schema.set("");
 	$tables.set([]);
 	$selectedTable.set(null);
 	$screen.set("connections");

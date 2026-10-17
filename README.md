@@ -14,13 +14,13 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 
 ## Features
 
-- Postgres connections defined in a user config file, listed on the start screen. A connection that fails is reported in the footer.
-- The tables and views in the `public` schema, listed in a sidebar once connected.
+- Postgres and MySQL connections defined in a user config file, listed on the start screen. A connection that fails is reported in the footer.
+- The tables and views in the `public` schema on Postgres, or the connection's database on MySQL, listed in a sidebar once connected.
 - Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that.
-- Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. Postgres sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column Postgres can't sort, such as `json`, is reported in the footer and the rows stay as they were.
+- Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. The database sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column the database can't sort, such as Postgres `json`, is reported in the footer and the rows stay as they were.
 - Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
 - Several tables open at once, as tabs with a close button. Each tab remembers its scroll position, and each connection remembers its open tabs.
-- Values shown as Postgres formats them as text, so a date has no time and a `timestamptz` is in the session's time zone. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
+- Values shown as the database formats them as text, so a date has no time and a Postgres `timestamptz` is in the session's time zone. MySQL binary and blob values are shown as hex, such as `0x00FF`, bits in binary, such as `101`, and spatial values as text, such as `POINT(1 2)`. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
 - mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
 - Closing the connection returns to the start screen.
 - A themeable UI, configurable through a user config file.
@@ -90,7 +90,7 @@ logs_path = "~/.local/state/mensa/logs"
 name = "Local"
 url = "postgres://user:password@localhost:5432/app"
 
-# …or separate fields. port defaults to 5432, must be at most 65535, and overrides the port in a url when set.
+# …or separate fields. port defaults to 5432 for Postgres and 3306 for MySQL, must be at most 65535, and overrides the port in a url when set.
 [[connections]]
 name = "Staging"
 host = "db.example.com"
@@ -99,6 +99,20 @@ user = "app"
 password = "secret"
 database = "app"
 ssl = "require" # disable, allow, prefer, require, verify-ca or verify-full
+
+# driver is postgres or mysql. It defaults to postgres, or mysql for a mysql://, mysql2:// or mariadb:// url.
+# MySQL needs a database, in the url or as database. ssl defaults to prefer, unless the url sets ssl or sslmode,
+# since MySQL 8 refuses a password over an unencrypted connection by default.
+[[connections]]
+name = "Shop"
+driver = "mysql"
+host = "localhost"
+user = "root"
+password = "secret"
+database = "shop"
+# Only for a trusted local server without TLS: lets mensa fetch the server's key to send the password,
+# which someone on the network could replace with their own to read the password. Defaults to false.
+# allow_public_key_retrieval = true
 
 [theme]
 bg = "#0C0C0C"      # or "transparent"

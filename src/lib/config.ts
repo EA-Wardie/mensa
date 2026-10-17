@@ -2,7 +2,8 @@ import { resolve } from "node:path";
 import { parseColor, RGBA } from "@opentui/core";
 import {
 	DEFAULT_DOUBLE_CLICK_TIMEOUT,
-	DEFAULT_PORT,
+	DEFAULT_MYSQL_PORT,
+	DEFAULT_POSTGRES_PORT,
 	DEFAULT_ROW_LIMIT,
 	HOME_DIRECTORY,
 	MAX_PORT,
@@ -57,8 +58,29 @@ const SSL_MODES = [
 
 export type SslMode = (typeof SSL_MODES)[number];
 
+const DRIVERS = ["postgres", "mysql"] as const;
+
+export type Driver = (typeof DRIVERS)[number];
+
+interface DriverDefaults {
+	port: number;
+	// Used when neither the connection nor its url sets TLS.
+	ssl: SslMode | null;
+	// Whether the connection has to name a database.
+	needsDatabase: boolean;
+}
+
+const DRIVER_DEFAULTS: Record<Driver, DriverDefaults> = {
+	postgres: { port: DEFAULT_POSTGRES_PORT, ssl: null, needsDatabase: false },
+	// MySQL 8 only takes a password without TLS when the client may fetch the
+	// server's key, so MySQL prefers TLS, as the mysql client does. Without a
+	// database, Bun connects to MySQL's own system database.
+	mysql: { port: DEFAULT_MYSQL_PORT, ssl: "prefer", needsDatabase: true },
+};
+
 export interface ConnectionConfig {
 	name: string;
+	driver: Driver;
 	url?: string;
 	host?: string;
 	port?: number;
@@ -66,6 +88,9 @@ export interface ConnectionConfig {
 	password?: string;
 	database?: string;
 	ssl?: SslMode;
+	// MySQL only. Lets the client fetch the server's key to send a password
+	// without TLS, which a network attacker could replace with their own.
+	allowPublicKeyRetrieval?: boolean;
 }
 
 interface ConfigFile {
@@ -153,6 +178,24 @@ function optionalString(
 	return typeof value === "string" && value ? value : undefined;
 }
 
+// The query parameters a url can set TLS with.
+const URL_SSL_PARAMS: readonly string[] = ["ssl", "sslmode"];
+
+// A url's scheme picks the driver when the connection doesn't set one.
+function urlDriver(url: string | undefined): Driver {
+	return url && /^(mysql2?|mariadb):/i.test(url) ? "mysql" : "postgres";
+}
+
+// Null for a url the URL parser rejects, such as one with a socket and no
+// host, which is left for the driver to read.
+function parseUrl(url: string): URL | null {
+	try {
+		return new URL(url);
+	} catch {
+		return null;
+	}
+}
+
 function parseConnection(
 	value: unknown,
 	index: number,
@@ -166,12 +209,20 @@ function parseConnection(
 	const name: string | undefined = optionalString(value, "name");
 	const url: string | undefined = optionalString(value, "url");
 	const host: string | undefined = optionalString(value, "host");
-	// A url carries its own port, which an explicit port option would override.
-	const port: unknown = value.port ?? (url ? undefined : DEFAULT_PORT);
+	const database: string | undefined = optionalString(value, "database");
+	const parsedUrl: URL | null = url ? parseUrl(url) : null;
+	const driver: unknown = value.driver ?? urlDriver(url);
 	const ssl: unknown = value.ssl;
+	const allowPublicKeyRetrieval: unknown = value.allow_public_key_retrieval;
 
 	if (!name) {
 		logError(new Error(`Connection #${index + 1} has no name`));
+
+		return undefined;
+	}
+
+	if (!(typeof driver === "string" && isOneOf(DRIVERS, driver))) {
+		logError(new Error(`Invalid driver for "${name}": ${String(driver)}`));
 
 		return undefined;
 	}
@@ -181,6 +232,26 @@ function parseConnection(
 
 		return undefined;
 	}
+
+	const defaults: DriverDefaults = DRIVER_DEFAULTS[driver];
+	// A url the URL parser rejects can't be checked, so it counts as having no
+	// database and as setting its own TLS.
+	const urlHasDatabase: boolean = (parsedUrl?.pathname.length ?? 0) > 1;
+	const urlSetsSsl: boolean =
+		url !== undefined &&
+		(parsedUrl === null ||
+			URL_SSL_PARAMS.some((param: string): boolean =>
+				parsedUrl.searchParams.has(param),
+			));
+
+	if (defaults.needsDatabase && !database && !urlHasDatabase) {
+		logError(new Error(`Connection "${name}" needs a database`));
+
+		return undefined;
+	}
+
+	// A url carries its own port, which an explicit port option would override.
+	const port: unknown = value.port ?? (url ? undefined : defaults.port);
 
 	if (port !== undefined && !(isPositiveInteger(port) && port <= MAX_PORT)) {
 		logError(new Error(`Invalid port for "${name}": ${String(port)}`));
@@ -197,10 +268,22 @@ function parseConnection(
 		return undefined;
 	}
 
-	const connection: ConnectionConfig = { name: name };
+	if (
+		allowPublicKeyRetrieval !== undefined &&
+		typeof allowPublicKeyRetrieval !== "boolean"
+	) {
+		logError(
+			new Error(
+				`Invalid allow_public_key_retrieval for "${name}": ${String(allowPublicKeyRetrieval)}`,
+			),
+		);
+
+		return undefined;
+	}
+
+	const connection: ConnectionConfig = { name: name, driver: driver };
 	const user: string | undefined = optionalString(value, "user");
 	const password: string | undefined = optionalString(value, "password");
-	const database: string | undefined = optionalString(value, "database");
 
 	if (port !== undefined) connection.port = port;
 	if (url) connection.url = url;
@@ -208,7 +291,15 @@ function parseConnection(
 	if (user) connection.user = user;
 	if (password) connection.password = password;
 	if (database) connection.database = database;
-	if (ssl) connection.ssl = ssl;
+	if (allowPublicKeyRetrieval === true) {
+		connection.allowPublicKeyRetrieval = true;
+	}
+
+	if (ssl) {
+		connection.ssl = ssl;
+	} else if (defaults.ssl && !urlSetsSsl) {
+		connection.ssl = defaults.ssl;
+	}
 
 	return connection;
 }
@@ -257,27 +348,27 @@ export const connections: ConnectionConfig[] = parseConnections(
 
 export function describeConnection(connection: ConnectionConfig): string {
 	if (connection.url) {
-		try {
-			const url: URL = new URL(connection.url);
+		const url: URL | null = parseUrl(connection.url);
 
-			if (connection.port !== undefined) {
-				url.port = String(connection.port);
-			}
-
-			return `${url.username ? `${url.username}@` : ""}${url.host}${url.pathname}`;
-		} catch {
+		if (!url) {
 			// Drops the password from a url the URL parser rejects.
 			return connection.url.replace(
 				/^([^:/?#]+:\/\/[^:@/?#]*):[^/?#]*@/,
 				"$1@",
 			);
 		}
+
+		if (connection.port !== undefined) {
+			url.port = String(connection.port);
+		}
+
+		return `${url.username ? `${url.username}@` : ""}${url.host}${url.pathname}`;
 	}
 
 	const user: string = connection.user ? `${connection.user}@` : "";
 	const database: string = connection.database ? `/${connection.database}` : "";
 
-	return `${user}${connection.host}:${connection.port ?? DEFAULT_PORT}${database}`;
+	return `${user}${connection.host}:${connection.port ?? DRIVER_DEFAULTS[connection.driver].port}${database}`;
 }
 
 const COLOR_PATTERN: RegExp =

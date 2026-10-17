@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+
+- MySQL connections. A connection's `driver` is `postgres` or `mysql`, and defaults to `postgres`, or `mysql` for a `mysql://`, `mysql2://` or `mariadb://` url. MySQL lists the tables and views of the connection's database, so it needs one, in the url or as `database`, and its port defaults to 3306. Its `ssl` defaults to `prefer`, unless the url sets `ssl` or `sslmode`, since MySQL 8 refuses a password over an unencrypted connection by default. `allow_public_key_retrieval = true` lets it send a password without TLS, for trusted local servers. Binary and blob values are shown as hex, bits in binary and spatial values as WKT text. Sorting, the row limit and tabs work as they do for Postgres.
+
+### Changed
+
+- The sidebar names the schema when it has no tables, such as `No tables in shop`.
+
+### Internal
+
+- `lib/database.ts` keeps a `Dialect` per driver, with its identifier quote, its text cast for each data type, and the schema it lists as an expression, `'public'` or MySQL's `DATABASE()`, which connecting selects to check the connection. The open client, its dialect and its schema are kept together. The driver names are Bun's adapter names, and each driver's default port, ssl and need for a database sit in one table in `lib/config.ts`. `information_schema` columns are aliased, since MySQL names them in capitals. Loaded `TableData` keeps each column's data type, so a re-sort casts the same way. `$schema` holds the listed schema, and is empty when listing the tables failed, so the sidebar says `Could not list tables` instead of `No tables in …`.
+
 ## 0.1.1
 
 ### Added

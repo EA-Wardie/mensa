@@ -7,6 +7,7 @@ import { SHORTCUTS } from "../lib/shortcuts";
 import {
 	$connection,
 	$openTables,
+	$schema,
 	$selectedTable,
 	$tables,
 } from "../lib/store";
@@ -78,7 +79,15 @@ export class TableSidebar {
 				paddingX: 1,
 			});
 
-			empty.add(Message.make({ content: "No tables in public" }));
+			const schema: string = $schema.get();
+
+			empty.add(
+				Message.make({
+					content: schema
+						? `No tables in ${displayText(schema)}`
+						: "Could not list tables",
+				}),
+			);
 			this._component.add(empty);
 
 			return;

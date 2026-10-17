@@ -3,7 +3,7 @@ import { type ConnectionConfig, connections } from "./config";
 
 export type Screen = "connections" | "database";
 
-// A value as Postgres formats it as text, or null.
+// A value as the database formats it as text, or null.
 export type Value = string | null;
 
 export type SortDirection = "asc" | "desc";
@@ -20,6 +20,8 @@ export type TableData =
 	| {
 			status: "loaded";
 			columns: string[];
+			// Each column's data type, as information_schema names it.
+			types: string[];
 			rows: Value[][];
 			truncated: boolean;
 			sort: Sort | null;
@@ -38,6 +40,10 @@ export const $selectedConnection = nanostores.atom<ConnectionConfig | null>(
 export const $connecting = nanostores.atom<ConnectionConfig | null>(null);
 
 export const $connection = nanostores.atom<ConnectionConfig | null>(null);
+
+// The schema whose tables are listed: public, or the MySQL database. Empty
+// when listing them failed.
+export const $schema = nanostores.atom<string>("");
 
 export const $tables = nanostores.atom<string[]>([]);
 
