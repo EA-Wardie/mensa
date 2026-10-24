@@ -231,9 +231,13 @@ class TabBar extends core.Renderable {
 		}
 	}
 
-	// Right clicking a tab shows it first. The menu opens anywhere on the bar,
-	// once the tab is shown, which may ask to discard the edited row.
+	// Right clicking a tab shows it first, which may ask to discard the edited
+	// row, and then opens the menu.
 	private handleMenu(event: core.MouseEvent, hit: Hit | null): void {
+		if (!hit) {
+			return;
+		}
+
 		const show: () => void = (): void => {
 			Menu.make({
 				x: event.x,
@@ -256,7 +260,7 @@ class TabBar extends core.Renderable {
 			});
 		};
 
-		if (hit && hit.table !== this._active) {
+		if (hit.table !== this._active) {
 			confirmDiscard((): void => {
 				openTable(hit.table);
 				show();

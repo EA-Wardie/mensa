@@ -16,6 +16,7 @@ import {
 	setEntry,
 	type TableData,
 	type TableMeta,
+	type TypeKind,
 	type Value,
 } from "./store";
 
@@ -40,6 +41,7 @@ interface ColumnRow {
 interface Columns {
 	columns: string[];
 	types: string[];
+	kinds: TypeKind[];
 	meta: TableMeta;
 }
 
@@ -53,10 +55,13 @@ interface PostgresColumnRow {
 	cast_type: string;
 	type_name: string;
 	type_kind: string;
+	base_type: string;
+	type_category: string;
 	typmod: number;
 	nullable: boolean;
 	generated: boolean;
 	key_position: number | null;
+	foreign_key: boolean;
 	enum_values: string | null;
 	relation_kind: string;
 }
@@ -69,15 +74,18 @@ interface MysqlColumnRow {
 	is_nullable: string;
 	generation_expression: string | null;
 	key_position: number | bigint | string | null;
+	foreign_key: number | bigint | string;
 	table_type: string;
 }
 
-// The table metadata and the key position of each column, which the dialects
-// turn into a TableMeta the same way. A key column that isn't matchable is
-// loaded in a form that can't be compared back, such as MySQL's hex.
+// The table metadata, the key position of each column and whether it's in a
+// foreign key, which the dialects turn into a TableMeta the same way. A key
+// column that isn't matchable is loaded in a form that can't be compared back,
+// such as MySQL's hex.
 interface DescribedColumn {
 	meta: ColumnMeta;
 	keyPosition: number | null;
+	foreign: boolean;
 	matchable: boolean;
 }
 
@@ -115,6 +123,9 @@ interface Dialect {
 	schema: string;
 	// Reads what the row editor needs to know about a table's columns.
 	describe: (sql: SQL, schema: string, name: string) => Promise<TableMeta>;
+	// The kind of an information_schema data type, for a table describe
+	// couldn't read.
+	typeKind: (type: string) => TypeKind;
 	// The placeholder for the nth parameter, which sets or matches a column.
 	param: (index: number, column: ColumnMeta) => string;
 	// Whether UPDATE and DELETE can return rows, or MySQL's count is read.
@@ -221,6 +232,9 @@ function makeTableMeta(
 			]),
 		),
 		primaryKey: keys.map((column: DescribedColumn): string => column.meta.name),
+		foreignKeys: described
+			.filter((column: DescribedColumn): boolean => column.foreign)
+			.map((column: DescribedColumn): string => column.meta.name),
 		readOnly:
 			readOnly ??
 			(!keys.length
@@ -262,11 +276,86 @@ function postgresEdit(row: PostgresColumnRow): ColumnEdit {
 	return { as: "text", long: long };
 }
 
+// Types whose category holds several kinds, named as format_type and
+// information_schema name them. The rest are only for a table describe
+// couldn't read, since the category tells them apart.
+const POSTGRES_TYPE_KINDS: ReadonlyMap<string, TypeKind> = new Map<
+	string,
+	TypeKind
+>([
+	["smallint", "integer"],
+	["integer", "integer"],
+	["bigint", "integer"],
+	["oid", "integer"],
+	["numeric", "decimal"],
+	["real", "decimal"],
+	["double precision", "decimal"],
+	["money", "decimal"],
+	["date", "date"],
+	["time without time zone", "time"],
+	["time with time zone", "time"],
+	["timestamp without time zone", "timestamp"],
+	["timestamp with time zone", "timestamp"],
+	["json", "json"],
+	["jsonb", "json"],
+	["uuid", "uuid"],
+	["xml", "xml"],
+	["bytea", "binary"],
+	["geometry", "spatial"],
+	["geography", "spatial"],
+	["macaddr", "network"],
+	["macaddr8", "network"],
+	["character varying", "text"],
+	["character", "text"],
+	["text", "text"],
+	["name", "text"],
+	// Its category is internal, and format_type quotes its name.
+	['"char"', "text"],
+	["boolean", "boolean"],
+	["interval", "interval"],
+	["bit", "binary"],
+	["bit varying", "binary"],
+	["inet", "network"],
+	["cidr", "network"],
+	["point", "spatial"],
+	["line", "spatial"],
+	["lseg", "spatial"],
+	["box", "spatial"],
+	["path", "spatial"],
+	["polygon", "spatial"],
+	["circle", "spatial"],
+	["ARRAY", "array"],
+]);
+
+// pg_type's typcategory, so a domain, a user defined enum or an array is
+// named by the type it holds.
+const POSTGRES_CATEGORY_KINDS: ReadonlyMap<string, TypeKind> = new Map<
+	string,
+	TypeKind
+>([
+	["A", "array"],
+	["B", "boolean"],
+	["E", "enum"],
+	["G", "spatial"],
+	["I", "network"],
+	["S", "text"],
+	["T", "interval"],
+	["V", "binary"],
+]);
+
+function postgresKind(type: string, category: string): TypeKind {
+	return (
+		POSTGRES_TYPE_KINDS.get(type) ??
+		POSTGRES_CATEGORY_KINDS.get(category) ??
+		"other"
+	);
+}
+
 // pg_catalog rather than information_schema, for the exact types, enum labels,
 // generated columns and the key order. Names and "char" columns are cast to
 // text, so they arrive as strings. A type without its length is unlimited,
 // except character and bit, which mean char(1) and bit(1), so those are cast
-// to bpchar and varbit.
+// to bpchar and varbit. A domain's kind is its base type's.
 async function describePostgres(
 	sql: SQL,
 	schema: string,
@@ -285,10 +374,18 @@ async function describePostgres(
 			END AS cast_type,
 			t.typname::text AS type_name,
 			t.typtype::text AS type_kind,
+			format_type(b.oid, NULL) AS base_type,
+			b.typcategory::text AS type_category,
 			a.atttypmod AS typmod,
 			NOT a.attnotnull AS nullable,
 			(a.attgenerated <> '' OR a.attidentity = 'a') AS generated,
 			array_position(i.indkey::int2[], a.attnum) AS key_position,
+			EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_constraint f
+				WHERE f.conrelid = c.oid AND f.contype = 'f'
+					AND a.attnum = ANY (f.conkey)
+			) AS foreign_key,
 			CASE WHEN t.typtype = 'e' THEN (
 				SELECT json_agg(e.enumlabel ORDER BY e.enumsortorder)::text
 				FROM pg_catalog.pg_enum e
@@ -299,6 +396,8 @@ async function describePostgres(
 		JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
 		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 		JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+		JOIN pg_catalog.pg_type b
+			ON b.oid = CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.oid END
 		LEFT JOIN pg_catalog.pg_index i
 			ON i.indrelid = c.oid AND i.indisprimary
 		WHERE n.nspname = ${schema} AND c.relname = ${name}
@@ -316,8 +415,10 @@ async function describePostgres(
 					castType: row.cast_type,
 					nullable: row.nullable,
 					edit: postgresEdit(row),
+					kind: postgresKind(row.base_type, row.type_category),
 				},
 				keyPosition: row.key_position,
+				foreign: row.foreign_key,
 				matchable: true,
 			}),
 		),
@@ -334,6 +435,56 @@ function mysqlEnumOptions(columnType: string): string[] {
 	return [...columnType.matchAll(/'((?:[^']|'')*)'/g)].map(
 		(match: RegExpMatchArray): string => (match[1] ?? "").replaceAll("''", "'"),
 	);
+}
+
+// Named as data_type names them. Binary and spatial types have their own sets.
+const MYSQL_TYPE_KINDS: ReadonlyMap<string, TypeKind> = new Map<
+	string,
+	TypeKind
+>([
+	["char", "text"],
+	["varchar", "text"],
+	["tinytext", "text"],
+	["text", "text"],
+	["mediumtext", "text"],
+	["longtext", "text"],
+	["tinyint", "integer"],
+	["smallint", "integer"],
+	["mediumint", "integer"],
+	["int", "integer"],
+	["bigint", "integer"],
+	["decimal", "decimal"],
+	["float", "decimal"],
+	["double", "decimal"],
+	["date", "date"],
+	["year", "date"],
+	["time", "time"],
+	["datetime", "timestamp"],
+	["timestamp", "timestamp"],
+	["json", "json"],
+	["enum", "enum"],
+	["set", "enum"],
+	["bit", "binary"],
+]);
+
+// MySQL has no boolean type, and its BOOLEAN is a tinyint(1), which only
+// column_type shows.
+function mysqlKind(type: string, columnType: string): TypeKind {
+	const lower: string = type.toLowerCase();
+
+	if (columnType.toLowerCase().startsWith("tinyint(1)")) {
+		return "boolean";
+	}
+
+	if (MYSQL_BINARY_TYPES.has(lower)) {
+		return "binary";
+	}
+
+	if (MYSQL_SPATIAL_TYPES.has(lower)) {
+		return "spatial";
+	}
+
+	return MYSQL_TYPE_KINDS.get(lower) ?? "other";
 }
 
 function mysqlEdit(row: MysqlColumnRow): ColumnEdit {
@@ -389,7 +540,9 @@ function mysqlEdit(row: MysqlColumnRow): ColumnEdit {
 }
 
 // The key comes from the PRIMARY index, since column_key says PRI for a
-// unique key too when there is no primary key.
+// unique key too when there is no primary key. The foreign keys are matched by
+// the schema and table given, rather than the outer row's, so MySQL reads
+// key_column_usage for this table alone.
 async function describeMysql(
 	sql: SQL,
 	schema: string,
@@ -404,6 +557,14 @@ async function describeMysql(
 			c.is_nullable AS is_nullable,
 			c.generation_expression AS generation_expression,
 			s.seq_in_index AS key_position,
+			EXISTS (
+				SELECT 1
+				FROM information_schema.key_column_usage k
+				WHERE k.table_schema = ${schema}
+					AND k.table_name = ${name}
+					AND k.column_name = c.column_name
+					AND k.referenced_table_name IS NOT NULL
+			) AS foreign_key,
 			t.table_type AS table_type
 		FROM information_schema.columns c
 		JOIN information_schema.tables t
@@ -427,9 +588,11 @@ async function describeMysql(
 					castType: row.data_type,
 					nullable: row.is_nullable === "YES",
 					edit: mysqlEdit(row),
+					kind: mysqlKind(row.data_type, row.column_type),
 				},
 				keyPosition:
 					row.key_position === null ? null : Number(row.key_position),
+				foreign: Number(row.foreign_key) === 1,
 				// Binary, bit and spatial values are loaded as text the column
 				// can't be compared with.
 				matchable: !MYSQL_TEXT_FORMS.has(row.data_type.toLowerCase()),
@@ -490,6 +653,7 @@ const DIALECTS: Record<Driver, Dialect> = {
 		asText: (column: string): string => `${column}::text`,
 		schema: "'public'",
 		describe: describePostgres,
+		typeKind: (type: string): TypeKind => postgresKind(type, ""),
 		// Values are text, so they're read as the column's type. A parameter
 		// typed as text wouldn't assign to most columns.
 		param: (index: number, column: ColumnMeta): string =>
@@ -505,6 +669,7 @@ const DIALECTS: Record<Driver, Dialect> = {
 		asText: mysqlAsText,
 		schema: "DATABASE()",
 		describe: describeMysql,
+		typeKind: (type: string): TypeKind => mysqlKind(type, ""),
 		param: (_index: number, column: ColumnMeta): string =>
 			column.edit.as === "json" ? "CAST(? AS JSON)" : "?",
 		returning: false,
@@ -591,6 +756,7 @@ async function listColumns(
 			return {
 				columns: new Map<string, ColumnMeta>(),
 				primaryKey: [],
+				foreignKeys: [],
 				readOnly: `Could not read the table's columns, so its rows can't be edited: ${errorMessage(error)}`,
 			};
 		}),
@@ -599,6 +765,11 @@ async function listColumns(
 	return {
 		columns: rows.map((row: ColumnRow): string => row.column_name),
 		types: rows.map((row: ColumnRow): string => row.data_type),
+		kinds: rows.map(
+			(row: ColumnRow): TypeKind =>
+				meta.columns.get(row.column_name)?.kind ??
+				dialect.typeKind(row.data_type),
+		),
 		meta: meta,
 	};
 }
@@ -709,17 +880,19 @@ export async function loadTable(name: string): Promise<void> {
 
 	clearSortNotice(name);
 
-	// A new sort keeps showing the old rows until the sorted ones arrive, and
-	// reuses their columns.
+	// A new sort keeps showing the old rows until the sorted ones arrive.
 	if (previous?.status !== "loaded") {
 		setEntry($tableData, name, { status: "loading" });
 	}
 
 	try {
-		const { columns, types, meta }: Columns =
-			previous?.status === "loaded"
-				? previous
-				: await listColumns(sql, dialect, schema, name);
+		// Read on every load, so the columns and keys follow schema changes.
+		const { columns, types, kinds, meta }: Columns = await listColumns(
+			sql,
+			dialect,
+			schema,
+			name,
+		);
 		const values: string = selectList(dialect, columns, types);
 		const table: string = qualified(dialect, schema, name);
 		// Qualified with the table, since a bare name could mean the text output
@@ -743,6 +916,7 @@ export async function loadTable(name: string): Promise<void> {
 			status: "loaded",
 			columns: columns,
 			types: types,
+			kinds: kinds,
 			rows: rows.slice(0, rowLimit),
 			truncated: rows.length > rowLimit,
 			sort: sort ?? null,

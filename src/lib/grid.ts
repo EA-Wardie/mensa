@@ -1,6 +1,7 @@
+import { type ColumnIcon, columnIcon, columnKind } from "./columnKinds";
 import { MAX_COLUMN_WIDTH } from "./consts";
 import { displayText, fitText, NULL_TEXT } from "./format";
-import type { TableData, Value } from "./store";
+import type { LoadedTable, TableData, Value } from "./store";
 
 export type Cell = string | null;
 
@@ -8,6 +9,7 @@ export type Cell = string | null;
 // only draws them.
 export interface Grid {
 	columns: string[];
+	icons: ColumnIcon[];
 	cells: Cell[][];
 	widths: number[];
 	totalWidth: number;
@@ -24,6 +26,11 @@ export const CELL_PADDING: number = 1;
 // move the columns.
 const SORT_SPACE: number = 2;
 
+// Every name has its column's icon and a gap before it.
+export const ICON_SPACE: number = 2;
+
+const HEADER_SPACE: number = ICON_SPACE + SORT_SPACE;
+
 const GRIDS: WeakMap<Value[][], Grid> = new WeakMap<Value[][], Grid>();
 
 export function columnSpan(width: number): number {
@@ -37,7 +44,7 @@ function measure(value: Value): Measured {
 }
 
 // Each text is measured once, both to size its column and to fit it.
-function makeGrid(columns: string[], rows: Value[][]): Grid {
+function makeGrid({ columns, kinds, rows, meta }: LoadedTable): Grid {
 	const header: Measured[] = columns.map(measure);
 	const measured: Measured[][] = rows.map((row: Value[]): Measured[] =>
 		row.map(measure),
@@ -49,14 +56,18 @@ function makeGrid(columns: string[], rows: Value[][]): Grid {
 				measured.reduce(
 					(width: number, row: Measured[]): number =>
 						Math.max(width, row[index]?.width ?? 0),
-					column.width + SORT_SPACE,
+					column.width + HEADER_SPACE,
 				),
 			),
 	);
 
 	return {
 		columns: header.map((column: Measured, index: number): string =>
-			fitText(column.text, (widths[index] ?? 0) - SORT_SPACE, column.width),
+			fitText(column.text, (widths[index] ?? 0) - HEADER_SPACE, column.width),
+		),
+		icons: columns.map(
+			(column: string, index: number): ColumnIcon =>
+				columnIcon(columnKind(meta, column, kinds[index] ?? "other")),
 		),
 		cells: measured.map((row: Measured[], index: number): Cell[] =>
 			row.map(
@@ -82,7 +93,7 @@ export function gridFor(data: TableData | undefined): Grid | null {
 	let grid: Grid | undefined = GRIDS.get(data.rows);
 
 	if (!grid) {
-		grid = makeGrid(data.columns, data.rows);
+		grid = makeGrid(data);
 		GRIDS.set(data.rows, grid);
 	}
 

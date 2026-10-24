@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.5
+
+### Added
+
+- Icons in the grid's column headers. Primary key columns have a yellow key and foreign key columns a white one, in the text colour, and a column in both shows the primary key's. The yellow is the new `warning` theme colour, a darker yellow by default on a light background. Other columns have a muted icon for their type, such as text, integer, decimal, boolean, date, time, timestamp, JSON, UUID or enum. A Postgres domain shows its base type's icon.
+
+### Changed
+
+- The tab bar's menu opens only when right clicking a tab, not the empty bar beside the tabs or its scroll arrows.
+- A table's columns and keys are read again on every load, including sorts and reloads, so changes made in another tool show without reopening the tab.
+
 ## 0.2.4
 
 ### Added

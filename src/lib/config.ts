@@ -17,6 +17,7 @@ const THEME_KEYS = [
 	"border",
 	"success",
 	"danger",
+	"warning",
 	"accent",
 	"surface",
 ] as const;
@@ -46,6 +47,7 @@ export interface ThemeType {
 	success_pressed: RGBA;
 	danger: RGBA;
 	danger_pressed: RGBA;
+	warning: RGBA;
 }
 
 const SSL_MODES = [
@@ -387,8 +389,12 @@ const defaultTheme: Record<BaseColorKey, string> = {
 	border: "#d4d4d4",
 	success: "#16a34a",
 	danger: "#dc2626",
+	warning: "#eab308",
 	accent: "#0369a1",
 };
+
+// The default warning on a light background, where the yellow is hard to see.
+const LIGHT_WARNING: string = "#a16207";
 
 function isValidColor(value: unknown): value is string {
 	return (
@@ -500,6 +506,8 @@ function makeTheme(config: unknown): ThemeType {
 		success_pressed: withAlpha(success, 0.75),
 		danger,
 		danger_pressed: withAlpha(danger, 0.75),
+		warning:
+			colors.warning ?? parseColor(dark ? defaultTheme.warning : LIGHT_WARNING),
 	};
 }
 
