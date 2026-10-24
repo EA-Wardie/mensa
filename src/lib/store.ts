@@ -22,6 +22,26 @@ export type ColumnEdit =
 	| { as: "choice"; options: string[]; labels: string[] }
 	| { as: "readonly"; reason: string };
 
+// What a column holds, for its header icon.
+export type TypeKind =
+	| "text"
+	| "integer"
+	| "decimal"
+	| "boolean"
+	| "date"
+	| "time"
+	| "timestamp"
+	| "interval"
+	| "json"
+	| "uuid"
+	| "enum"
+	| "binary"
+	| "array"
+	| "spatial"
+	| "network"
+	| "xml"
+	| "other";
+
 export interface ColumnMeta {
 	name: string;
 	// The type as the database names it, shown in the editor.
@@ -31,6 +51,7 @@ export interface ColumnMeta {
 	castType: string;
 	nullable: boolean;
 	edit: ColumnEdit;
+	kind: TypeKind;
 }
 
 export interface TableMeta {
@@ -52,6 +73,8 @@ export type TableData =
 			columns: string[];
 			// Each column's data type, as information_schema names it.
 			types: string[];
+			// Each column's kind, from its metadata or else its data type.
+			kinds: TypeKind[];
 			rows: Value[][];
 			truncated: boolean;
 			sort: Sort | null;

@@ -1,4 +1,4 @@
-import { type ColumnKind, columnKind } from "./columnKinds";
+import { type ColumnIcon, columnIcon, columnKind } from "./columnKinds";
 import { MAX_COLUMN_WIDTH } from "./consts";
 import { displayText, fitText, NULL_TEXT } from "./format";
 import type { LoadedTable, TableData, Value } from "./store";
@@ -9,7 +9,7 @@ export type Cell = string | null;
 // only draws them.
 export interface Grid {
 	columns: string[];
-	kinds: ColumnKind[];
+	icons: ColumnIcon[];
 	cells: Cell[][];
 	widths: number[];
 	totalWidth: number;
@@ -44,7 +44,7 @@ function measure(value: Value): Measured {
 }
 
 // Each text is measured once, both to size its column and to fit it.
-function makeGrid({ columns, types, rows, meta }: LoadedTable): Grid {
+function makeGrid({ columns, kinds, rows, meta }: LoadedTable): Grid {
 	const header: Measured[] = columns.map(measure);
 	const measured: Measured[][] = rows.map((row: Value[]): Measured[] =>
 		row.map(measure),
@@ -65,9 +65,9 @@ function makeGrid({ columns, types, rows, meta }: LoadedTable): Grid {
 		columns: header.map((column: Measured, index: number): string =>
 			fitText(column.text, (widths[index] ?? 0) - HEADER_SPACE, column.width),
 		),
-		kinds: columns.map(
-			(column: string, index: number): ColumnKind =>
-				columnKind(meta, column, types[index] ?? ""),
+		icons: columns.map(
+			(column: string, index: number): ColumnIcon =>
+				columnIcon(columnKind(meta, column, kinds[index] ?? "other")),
 		),
 		cells: measured.map((row: Measured[], index: number): Cell[] =>
 			row.map(

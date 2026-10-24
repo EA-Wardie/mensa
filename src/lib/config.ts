@@ -393,6 +393,9 @@ const defaultTheme: Record<BaseColorKey, string> = {
 	accent: "#0369a1",
 };
 
+// The default warning on a light background, where the yellow is hard to see.
+const LIGHT_WARNING: string = "#a16207";
+
 function isValidColor(value: unknown): value is string {
 	return (
 		typeof value === "string" &&
@@ -503,7 +506,8 @@ function makeTheme(config: unknown): ThemeType {
 		success_pressed: withAlpha(success, 0.75),
 		danger,
 		danger_pressed: withAlpha(danger, 0.75),
-		warning: color("warning"),
+		warning:
+			colors.warning ?? parseColor(dark ? defaultTheme.warning : LIGHT_WARNING),
 	};
 }
 
