@@ -32,6 +32,11 @@ export const TAB_WIDTH: number = 24;
 
 export const EDITOR_WIDTH: number = 48;
 
+// The query editor's share of a query tab's height, and its fewest rows.
+export const QUERY_EDITOR_HEIGHT: `${number}%` = "40%";
+
+export const QUERY_EDITOR_MIN_ROWS: number = 4;
+
 export const MENU_WIDTH: number = 30;
 
 // Longer values are edited in a textarea, which wraps them.
@@ -51,6 +56,12 @@ export const MAX_COLUMN_WIDTH: number = 40;
 export const ELLIPSIS: string = "…";
 
 export const CLOSE_ICON: string = "󰅖";
+
+export const ADD_ICON: string = "󰐕";
+
+export const QUERY_ICON: string = "󰆍";
+
+export const RUN_ICON: string = "󰐊";
 
 export const EDIT_ICON: string = "󰏫";
 

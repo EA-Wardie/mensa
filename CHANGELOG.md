@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.6
+
+### Added
+
+- Query tabs. The `+` after the last tab, `N` or New query in the database name's menu opens one, named `Query 1`, `Query 2` and so on. It has a SQL editor in the top 40% and the results below, in the same grid as table tabs, with each column's type icon. `Ctrl+Return`, `Alt+Return` in the editor or the Run button runs the SQL, and `Escape` leaves the editor, so the other keys work again. `Ctrl+Return` runs it from outside the editor too. `E` goes back into it. A new query tab starts in the editor.
+- A run can hold several statements separated by `;`. The grid shows the last statement that returned columns, with values as the database formats them as text, an empty result with its column names, and duplicate column names, such as `a.id, b.id`, as separate columns. MySQL bit and spatial values, and binary values that aren't text, are shown as hex. The first `row_limit` rows are shown, and the footer gives the total, the column count and how long the run took. A statement that returns no rows shows its kind, such as `INSERT`, and the rows it wrote. MySQL doesn't name its statements, so it shows `Done`, with the rows only when there are some.
+- A failed run shows the database's error in place of the rows. On Postgres it gives the line and column, and moves the cursor there. Editing the SQL mutes the error and marks it as from the last run.
+- Query tabs share one connection of their own, so a transaction or a `SET` lasts from one run to the next and table tabs don't see it until it commits. Closing the connection rolls back a transaction left open.
+- After a run with a statement that returned no rows, such as `CREATE TABLE`, the sidebar lists the tables again, which closes the tabs of dropped tables, and after a statement that may have written the open tables load again when shown.
+- Each connection remembers its query tabs and their SQL in `state.json`, along with its table tabs. Closing a query tab with SQL in it asks first.
+
+### Changed
+
+- The tab bar is always shown once connected, so the `+` is there with no tabs open.
+- `[`, `]`, `X` and the tab menu's Close all cover query tabs too, and the scroll keys scroll a query's results.
+- Building needs Bun 1.4.4 or later, which reports the columns of a result read as raw text.
+
+### Internal
+
+- `$tabs` holds the open tabs as `{ kind: "table" }` or `{ kind: "query" }` objects, compared by reference, and `$activeTab` the shown one. `$openTables` and `$activeTable` are now computed from them, so what only cares about tables reads them unchanged. `$querySql` holds each query tab's SQL, which nothing subscribes to, so typing redraws nothing, and `$queryResults` its last result. `state.json` saves the tabs in order with the active one's index, and still reads the old table names.
+- `runQuery` in `lib/database.ts` runs the SQL on the client's `queries` pool of one connection with `.simple().raw()` and names the columns from Bun's `columns`. Postgres reads the kind of each result type from `pg_type`, the way `describe` does, once per type on each connection, so a domain shows its base type's icon, and MySQL maps the protocol's type codes. A run's token drops its result once a newer run, closing the tab or closing the connection replaces it, like a table load's. Errors from the user's SQL aren't logged. It resolves to a `RunOutcome`. Since Postgres tags `CREATE TABLE AS` as `SELECT`, a run with a statement that returned no rows lists the tables, and an unchanged list leaves `$tables` as it is.
+- `QueryView.host()` also shows or hides the table `DataGrid` and sets `GridView.current`, and holds the one key listener for the shown query. Closing tabs, with its prompts, is in `lib/actions.ts`.
+- `GridView` holds what `DataGrid` drew and scrolled, with hooks for the message, the selection, the header's marker and clicks. `DataGrid` keeps the table's sort, selection, editing and menu, and `ResultGrid` shows a query's rows. `GridView.current` is the shown grid, which the shortcuts scroll. `lib/grid.ts` makes a grid from any `GridSource`, with `meta` null for a query's rows.
+- `QueryView.host()` keeps a view per open query tab, so each keeps its cursor, undo history and scroll, and shows the active one.
+
 ## 0.2.5
 
 ### Added

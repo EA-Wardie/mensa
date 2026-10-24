@@ -2,23 +2,57 @@ import * as core from "@opentui/core";
 import { version } from "../../package.json";
 import { rowLimit, theme } from "../lib/config";
 import { ctx } from "../lib/context";
-import { $activeTableData, type TableData } from "../lib/store";
+import { plural } from "../lib/format";
+import {
+	$activeTab,
+	$activeTableData,
+	$queryResults,
+	type QueryResult,
+	type Tab,
+	type TableData,
+} from "../lib/store";
 import { NoticeText } from "./NoticeText";
 
-function describeActiveTable(): string {
-	const data: TableData | undefined = $activeTableData.get();
+// A count of rows, with a note when only some are shown, and of columns.
+function describeRows(rows: number, limited: string, columns: number): string {
+	return `${plural(rows, "row")}${limited} · ${plural(columns, "column")}`;
+}
 
+function describeTable(data: TableData | undefined): string {
 	if (data?.status !== "loaded") {
 		return "";
 	}
 
-	const limited: string = data.truncated ? ` (first ${rowLimit})` : "";
-
-	return `${plural(data.rows.length, "row")}${limited} · ${plural(data.columns.length, "column")}`;
+	return describeRows(
+		data.rows.length,
+		data.truncated ? ` (first ${rowLimit})` : "",
+		data.columns.length,
+	);
 }
 
-function plural(count: number, noun: string): string {
-	return `${count} ${noun}${count === 1 ? "" : "s"}`;
+function describeQuery(result: QueryResult | undefined): string {
+	switch (result?.status) {
+		case "rows": {
+			const rows: number = result.rows.length;
+			const limited: string =
+				result.total > rows ? ` (first ${rows} of ${result.total})` : "";
+
+			return `${describeRows(rows, limited, result.columns.length)} · ${result.ms} ms`;
+		}
+		// The grid says what the statement did.
+		case "done":
+			return `${result.ms} ms`;
+		default:
+			return "";
+	}
+}
+
+function describeActiveTab(): string {
+	const tab: Tab | null = $activeTab.get();
+
+	return tab?.kind === "query"
+		? describeQuery($queryResults.get()[tab.id])
+		: describeTable($activeTableData.get());
 }
 
 export class DatabaseFooter {
@@ -42,8 +76,8 @@ export class DatabaseFooter {
 
 		this._component.add(
 			NoticeText.make({
-				fallback: describeActiveTable,
-				redrawOn: [$activeTableData],
+				fallback: describeActiveTab,
+				redrawOn: [$activeTab, $activeTableData, $queryResults],
 			}),
 		);
 	}

@@ -24,13 +24,16 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Delete a row, truncate or drop a table or view, and truncate or drop every table in the schema, from context menus. Each asks first, and the schema wide ones ask twice. Truncating restarts a Postgres table's identity columns, as MySQL does. Truncating or dropping one table that others reference fails with the database's error rather than emptying or changing them, while the schema wide ones handle the references between the schema's tables. On Postgres, a table or view outside the schema that depends on one inside it stops them, so nothing outside the schema changes. Rows of views and of tables without a primary key can't be deleted.
 - Switch to another connection from the database name's menu.
 - Several tables open at once, as tabs with a close button. The sidebar selects the active tab's table. Each tab remembers its scroll position, and each connection remembers its open tabs.
+- Query tabs, opened with the `+` after the last tab, `N`, or New query in the database name's menu. Each has a SQL editor over a grid of the results, and a Run button. A run can hold several statements separated by `;`, and the grid shows the last one that returned rows, with every value as the database formats it as text, as in table tabs. MySQL bit and spatial values, and binary values that aren't text, are shown as hex. Only the first `row_limit` rows are shown, and the footer says how many there were. A statement that returns no rows shows its kind and, for writes, the rows it changed. A query's rows are read only.
+- A failed run shows the database's error in place of the rows. On Postgres it also gives the line and column and moves the cursor there. The error is muted once the SQL changes. After a run with a statement that returned no rows, such as `CREATE TABLE`, the sidebar lists the tables again, and after a statement that may have written the open tables reload when shown.
+- Query tabs share one connection of their own, so a transaction or a `SET` lasts from one run to the next, in any query tab, and table tabs don't see it. Closing the connection rolls back a transaction left open. Each connection remembers its query tabs and their SQL, but not their results. Closing a query tab with SQL in it asks first.
 - Values shown as the database formats them as text, so a date has no time and a Postgres `timestamptz` is in the session's time zone. MySQL binary and blob values are shown as hex, such as `0x00FF`, bits in binary, such as `101`, and spatial values as text, such as `POINT(1 2)`. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
 - mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
 - Closing the connection returns to the start screen.
 - A themeable UI, configurable through a user config file.
 - First party mouse support.
 
-This version can edit and delete existing rows, but can't insert rows or run queries.
+This version can edit and delete existing rows in the grid. Other changes, such as inserting rows, are made with a query.
 
 ## Controls
 
@@ -44,12 +47,15 @@ This version can edit and delete existing rows, but can't insert rows or run que
 | `PageUp`, `PageDown`, `Home`, `End` | Tables | Scroll the rows |
 | `Left` / `H`, `Right` / `L` | Tables | Scroll the columns |
 | `Escape` | Tables | Clear the selected row |
-| `E` | Tables | Edit the selected row |
+| `E` | Tables | Edit the selected row, or the query's SQL in a query tab |
+| `N` | Tables | Open a new query tab |
 | `Tab`, `Shift+Tab` | Editor | Next and previous field |
 | `Up` / `K`, `Down` / `J` | Editor | Pick from a boolean or enum list |
 | `Ctrl+N` | Editor | Toggle the field's `NULL` |
 | `Ctrl+S` | Editor | Save the changed columns |
 | `Escape` | Editor | Close, asking first when there are unsaved changes |
+| `Ctrl+Return`, `Alt+Return` | Query | Run the SQL. `Ctrl+Return` works outside the editor too. Terminals without the kitty keyboard protocol send `Ctrl+Return` as `Return`, so use `Alt+Return` in the editor there. |
+| `Escape` | Query | Leave the SQL, so the other keys work again |
 | `C` | Tables | Close the connection, after confirming |
 | `Q` | Everywhere | Quit, after confirming |
 | `Return`, `Escape` | Confirmation | Confirm or cancel. The second confirmation for truncating or dropping every table needs a click instead of `Return`. |
@@ -58,7 +64,8 @@ This version can edit and delete existing rows, but can't insert rows or run que
 Mouse controls:
 
 - Double click a connection to connect, or a table to open it.
-- Click a tab to switch to it. Click its close button or middle click it to close it. The wheel scrolls the tabs when they don't all fit.
+- Click a tab to switch to it. Click its close button or middle click it to close it. The wheel scrolls the tabs when they don't all fit. Click the `+` after the tabs to open a query tab.
+- In a query tab, click the SQL to edit it and Run to run it. Click a result row to select it.
 - Click a row to select it. `Escape` clears the selection.
 - Double click a cell to edit its row, with that column's field focused. Click a field to focus it, and a field's `NULL` to toggle it. While the editor is open, other keys are paused and clicking a row doesn't change the selection. Sorting, switching or closing the tab, or opening another table asks first when the row has unsaved changes.
 - Click a column header to sort by it. Each click moves it from no sort to ascending, then descending, then back to no sort. Sorting another column replaces the current sort.
@@ -68,11 +75,11 @@ Mouse controls:
   - A row: Edit opens it in the editor, and Delete deletes it. Right clicking selects the row, unless the editor is open.
   - A tab: Close closes the active tab, and Close all closes every tab. Right clicking a tab switches to it first.
   - A table in the sidebar: Truncate deletes all its rows, and Delete drops it, or the view.
-  - The database name in the sidebar header: Switch lists the other connections to switch to. Truncate all empties every table, and Drop all drops every table and view.
+  - The database name in the sidebar header: New query opens a query tab. Switch lists the other connections to switch to. Truncate all empties every table, and Drop all drops every table and view.
 
 ## Installation
 
-Runs on Linux and macOS, on x86_64 and arm64. Building requires [Bun](https://bun.com).
+Runs on Linux and macOS, on x86_64 and arm64. Building requires [Bun](https://bun.com) 1.4.4 or later, which reports a query's columns.
 
 ```bash
 bun install --os="*" --cpu="*"

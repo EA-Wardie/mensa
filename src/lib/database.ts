@@ -4,6 +4,8 @@ import { CONNECTION_TIMEOUT, LONG_TEXT_LENGTH } from "./consts";
 import { logError } from "./log";
 import {
 	$notice,
+	$queryResults,
+	$querySql,
 	$selectedRows,
 	$sorts,
 	$tableData,
@@ -12,10 +14,12 @@ import {
 	type ColumnMeta,
 	type EditorTarget,
 	type LoadedTable,
+	type QueryResult,
 	type Sort,
 	setEntry,
 	type TableData,
 	type TableMeta,
+	type TextPosition,
 	type TypeKind,
 	type Value,
 } from "./store";
@@ -126,6 +130,15 @@ interface Dialect {
 	// The kind of an information_schema data type, for a table describe
 	// couldn't read.
 	typeKind: (type: string) => TypeKind;
+	// The kind of each column of a query's result. known holds the kinds read
+	// before on this connection, by type.
+	resultKinds: (
+		sql: SQL,
+		columns: SQL.ResultColumn[],
+		known: Map<number, TypeKind>,
+	) => Promise<TypeKind[]>;
+	// Whether a result column holds raw bytes rather than text, shown as hex.
+	resultHex: (column: SQL.ResultColumn) => boolean;
 	// The placeholder for the nth parameter, which sets or matches a column.
 	param: (index: number, column: ColumnMeta) => string;
 	// Whether UPDATE and DELETE can return rows, or MySQL's count is read.
@@ -142,9 +155,15 @@ interface Dialect {
 
 interface Client {
 	sql: SQL;
+	// The query tabs' own connection, so a transaction or a SET they start
+	// lasts from one run to the next, and never reaches the table tabs'
+	// connections. It connects on the first run.
+	queries: SQL;
 	dialect: Dialect;
 	// Empty until the client connects.
 	schema: string;
+	// The kinds of the types query results have had, kept for later runs.
+	typeKinds: Map<number, TypeKind>;
 }
 
 // MySQL types that cast to raw bytes, so they're shown as hex, like Postgres
@@ -430,6 +449,48 @@ async function describePostgres(
 	);
 }
 
+interface PostgresTypeRow {
+	oid: number;
+	base_type: string;
+	type_category: string;
+}
+
+// The result names its columns' types by OID, which are read from the catalog
+// to name them as describe does, with a domain as its base type. An OID names
+// one type for as long as it exists, so each is read once.
+async function postgresResultKinds(
+	sql: SQL,
+	columns: SQL.ResultColumn[],
+	known: Map<number, TypeKind>,
+): Promise<TypeKind[]> {
+	const oids: number[] = [
+		...new Set<number>(
+			columns
+				.map((column: SQL.ResultColumn): number => column.type)
+				.filter((oid: number): boolean => !known.has(oid)),
+		),
+	];
+	const rows: PostgresTypeRow[] = oids.length
+		? await sql`
+				SELECT
+					t.oid::int AS oid,
+					format_type(b.oid, NULL) AS base_type,
+					b.typcategory::text AS type_category
+				FROM pg_catalog.pg_type t
+				JOIN pg_catalog.pg_type b
+					ON b.oid = CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.oid END
+				WHERE t.oid = ANY (${`{${oids.join(",")}}`}::oid[])
+			`
+		: [];
+	for (const row of rows) {
+		known.set(row.oid, postgresKind(row.base_type, row.type_category));
+	}
+
+	return columns.map(
+		(column: SQL.ResultColumn): TypeKind => known.get(column.type) ?? "other",
+	);
+}
+
 // MySQL's enum labels are quoted in column_type, with quotes doubled.
 function mysqlEnumOptions(columnType: string): string[] {
 	return [...columnType.matchAll(/'((?:[^']|'')*)'/g)].map(
@@ -485,6 +546,60 @@ function mysqlKind(type: string, columnType: string): TypeKind {
 	}
 
 	return MYSQL_TYPE_KINDS.get(lower) ?? "other";
+}
+
+const MYSQL_TINY: number = 1;
+
+const MYSQL_BIT: number = 16;
+
+const MYSQL_GEOMETRY: number = 255;
+
+// The protocol's type codes. Strings and blobs share codes with their binary
+// forms, and the binary flag is set for a _bin collation's text too, so they
+// are all text, and enums and sets are strings with a flag of their own.
+const MYSQL_PROTOCOL_KINDS: ReadonlyMap<number, TypeKind> = new Map<
+	number,
+	TypeKind
+>([
+	[0, "decimal"],
+	[MYSQL_TINY, "integer"],
+	[2, "integer"],
+	[3, "integer"],
+	[4, "decimal"],
+	[5, "decimal"],
+	[7, "timestamp"],
+	[8, "integer"],
+	[9, "integer"],
+	[10, "date"],
+	[11, "time"],
+	[12, "timestamp"],
+	[13, "date"],
+	[14, "date"],
+	[MYSQL_BIT, "binary"],
+	[245, "json"],
+	[246, "decimal"],
+	[247, "enum"],
+	[248, "enum"],
+	[MYSQL_GEOMETRY, "spatial"],
+]);
+
+const MYSQL_STRING_TYPES: ReadonlySet<number> = new Set<number>([
+	15, 249, 250, 251, 252, 253, 254,
+]);
+
+const MYSQL_ENUM_FLAGS: number = 256 | 2048;
+
+// A tinyint(1) is MySQL's boolean, as in mysqlKind.
+function mysqlResultKind(column: SQL.ResultColumn): TypeKind {
+	if (column.type === MYSQL_TINY && column.length === 1) {
+		return "boolean";
+	}
+
+	if (MYSQL_STRING_TYPES.has(column.type)) {
+		return (column.flags ?? 0) & MYSQL_ENUM_FLAGS ? "enum" : "text";
+	}
+
+	return MYSQL_PROTOCOL_KINDS.get(column.type) ?? "other";
 }
 
 function mysqlEdit(row: MysqlColumnRow): ColumnEdit {
@@ -654,6 +769,9 @@ const DIALECTS: Record<Driver, Dialect> = {
 		schema: "'public'",
 		describe: describePostgres,
 		typeKind: (type: string): TypeKind => postgresKind(type, ""),
+		resultKinds: postgresResultKinds,
+		// bytea's text is already hex.
+		resultHex: (): boolean => false,
 		// Values are text, so they're read as the column's type. A parameter
 		// typed as text wouldn't assign to most columns.
 		param: (index: number, column: ColumnMeta): string =>
@@ -670,6 +788,13 @@ const DIALECTS: Record<Driver, Dialect> = {
 		schema: "DATABASE()",
 		describe: describeMysql,
 		typeKind: (type: string): TypeKind => mysqlKind(type, ""),
+		resultKinds: async (
+			_sql: SQL,
+			columns: SQL.ResultColumn[],
+		): Promise<TypeKind[]> => columns.map(mysqlResultKind),
+		// Bits and spatial values, which tables show in binary and as WKT.
+		resultHex: (column: SQL.ResultColumn): boolean =>
+			column.type === MYSQL_BIT || column.type === MYSQL_GEOMETRY,
 		param: (_index: number, column: ColumnMeta): string =>
 			column.edit.as === "json" ? "CAST(? AS JSON)" : "?",
 		returning: false,
@@ -696,15 +821,18 @@ let sortNotice: SortNotice | null = null;
 // its result, such as one that started before the table was truncated.
 const loads: Map<string, object> = new Map<string, object>();
 
+// Each query tab's run, the same way.
+const runs: Map<string, object> = new Map<string, object>();
+
 export function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
 // The drivers are named as Bun's adapters.
-function makeClient(connection: ConnectionConfig): SQL {
+function makeClient(connection: ConnectionConfig, max: number): SQL {
 	const options: Bun.SQL.PostgresOrMySQLOptions = {
 		adapter: connection.driver,
-		max: 4,
+		max: max,
 		connectionTimeout: CONNECTION_TIMEOUT,
 	};
 
@@ -821,9 +949,15 @@ async function listTables(sql: SQL, schema: string): Promise<string[]> {
 export async function openClient(
 	connection: ConnectionConfig,
 ): Promise<OpenedClient | null> {
-	const sql: SQL = makeClient(connection);
+	const sql: SQL = makeClient(connection, 4);
 	const dialect: Dialect = DIALECTS[connection.driver];
-	const opening: Client = { sql: sql, dialect: dialect, schema: "" };
+	const opening: Client = {
+		sql: sql,
+		queries: makeClient(connection, 1),
+		dialect: dialect,
+		schema: "",
+		typeKinds: new Map<number, TypeKind>(),
+	};
 	const opened: OpenedClient = { schema: "", tables: [], tablesError: "" };
 
 	client = opening;
@@ -840,7 +974,7 @@ export async function openClient(
 			client = null;
 		}
 
-		await sql.close({ timeout: 0 }).catch(logError);
+		await closeSql(opening);
 
 		if (current) {
 			throw error;
@@ -1175,6 +1309,208 @@ export async function deleteRow(target: RowTarget): Promise<string | null> {
 	return null;
 }
 
+// One statement's result, each value as raw bytes or null.
+type RawResult = (Buffer | null)[][] & SQL.ResultMetadata;
+
+// Statements that only read. MySQL doesn't name its statements, so there a
+// statement that returns no columns counts as a write.
+const READ_COMMANDS: ReadonlySet<string> = new Set<string>([
+	"SELECT",
+	"SHOW",
+	"EXPLAIN",
+	"VALUES",
+	"FETCH",
+]);
+
+// Statements whose count is the rows they wrote. MySQL doesn't name its
+// statements, so there a count is only shown when it's above 0, since DDL
+// counts 0.
+const COUNTED_COMMANDS: ReadonlySet<string> = new Set<string>([
+	"INSERT",
+	"UPDATE",
+	"DELETE",
+	"MERGE",
+	"COPY",
+]);
+
+const UTF8: TextDecoder = new TextDecoder("utf-8", { fatal: true });
+
+// A value as the database's text, or as hex when it is raw bytes that aren't
+// text, such as a MySQL blob.
+function rawText(value: Buffer | null, hex: boolean): Value {
+	if (value === null) {
+		return null;
+	}
+
+	if (!hex) {
+		try {
+			return UTF8.decode(value);
+		} catch {
+			// Not text, so shown as hex below.
+		}
+	}
+
+	return `0x${value.toString("hex").toUpperCase()}`;
+}
+
+function hasColumns(result: RawResult): boolean {
+	return Boolean(result.columns?.length);
+}
+
+function wrote(result: RawResult): boolean {
+	return result.command === null
+		? !hasColumns(result)
+		: !READ_COMMANDS.has(result.command);
+}
+
+// Postgres gives where an error is as a character offset from 1.
+function errorPosition(error: unknown, text: string): TextPosition | null {
+	const position: number = Number(
+		error instanceof Error && "position" in error ? error.position : NaN,
+	);
+
+	if (!Number.isInteger(position) || position < 1) {
+		return null;
+	}
+
+	const before: string[] = Array.from(text)
+		.slice(0, position - 1)
+		.join("")
+		.split("\n");
+
+	return {
+		line: before.length,
+		column: Array.from(before.at(-1) ?? "").length + 1,
+	};
+}
+
+// What a run shows: the last statement that returned columns, or else the
+// last statement, with the rows every statement wrote.
+async function showResult(
+	{ sql, dialect, typeKinds }: Client,
+	results: RawResult[],
+	ms: number,
+): Promise<QueryResult> {
+	const last: RawResult | undefined = results.at(-1);
+	const shown: RawResult | undefined = results.findLast(hasColumns) ?? last;
+	const columns: SQL.ResultColumn[] = shown?.columns ?? [];
+
+	if (!shown || !columns.length) {
+		const command: string | null = last?.command ?? null;
+		const affected: number = results.reduce(
+			(total: number, result: RawResult): number => total + result.affectedRows,
+			0,
+		);
+		const counted: boolean =
+			command === null ? affected > 0 : COUNTED_COMMANDS.has(command);
+
+		return {
+			status: "done",
+			command: command,
+			affected: counted ? affected : null,
+			ms: ms,
+		};
+	}
+
+	const hex: boolean[] = columns.map(dialect.resultHex);
+	const kinds: TypeKind[] = await dialect
+		.resultKinds(sql, columns, typeKinds)
+		.catch((error: unknown): TypeKind[] => {
+			logError(error);
+
+			return columns.map((): TypeKind => "other");
+		});
+
+	return {
+		status: "rows",
+		columns: columns.map((column: SQL.ResultColumn): string => column.name),
+		kinds: kinds,
+		rows: shown
+			.slice(0, rowLimit)
+			.map((row: (Buffer | null)[]): Value[] =>
+				row.map(
+					(value: Buffer | null, index: number): Value =>
+						rawText(value, hex[index] ?? false),
+				),
+			),
+		total: shown.length,
+		ms: ms,
+	};
+}
+
+// What a run may have changed. One whose statements all returned rows only
+// read, short of a SELECT whose CTE writes, which Postgres tags as SELECT. One
+// with a statement that returned none, such as CREATE TABLE AS, which is
+// tagged SELECT too, may have made or dropped a table, so the tables are
+// listed again. One that wrote loads the open tables again too.
+export type RunOutcome = "skipped" | "read" | "ran" | "wrote";
+
+// Runs a query tab's SQL as it is, which may hold several statements, on the
+// query tabs' own connection, and keeps the result in $queryResults while the
+// tab and the connection stay open. The SQL is the user's own, so its errors are
+// shown rather than logged.
+export async function runQuery(id: string, text: string): Promise<RunOutcome> {
+	const current: Client | null = client;
+	const token: object = {};
+	const isCurrent: () => boolean = (): boolean =>
+		client === current && runs.get(id) === token;
+	const setResult: (result: QueryResult) => void = (
+		result: QueryResult,
+	): void => {
+		if (id in $queryResults.get() && isCurrent()) {
+			setEntry($queryResults, id, result);
+		}
+	};
+
+	if (!current || $queryResults.get()[id]?.status === "running") {
+		return "skipped";
+	}
+
+	runs.set(id, token);
+	setResult({ status: "running" });
+
+	const started: number = performance.now();
+	let result: QueryResult;
+	// A failed run may have made a table with an earlier statement.
+	let outcome: RunOutcome = "ran";
+
+	try {
+		// Simple queries take several statements, and send every value as text.
+		const raw: RawResult | RawResult[] = await current.queries
+			.unsafe(text)
+			.simple()
+			.raw();
+		// Several statements resolve to a result each.
+		const results: RawResult[] = "columns" in raw ? [raw] : raw;
+
+		outcome = results.some(wrote)
+			? "wrote"
+			: results.every(hasColumns)
+				? "read"
+				: "ran";
+		result = await showResult(
+			current,
+			results,
+			Math.round(performance.now() - started),
+		);
+	} catch (error) {
+		result = {
+			status: "error",
+			message: errorMessage(error),
+			at: errorPosition(error, text),
+			sql: text,
+		};
+	}
+
+	setResult(result);
+
+	if (isCurrent()) {
+		runs.delete(id);
+	}
+
+	return client === current ? outcome : "skipped";
+}
+
 // Runs a statement, or statements with runAll, on the open client. Resolves
 // to an error message, or null.
 async function run(
@@ -1316,7 +1652,7 @@ export async function dropAll(): Promise<string | null> {
 	return error;
 }
 
-async function refreshTables(): Promise<void> {
+export async function refreshTables(): Promise<void> {
 	const current: Client | null = client;
 
 	if (!current) {
@@ -1325,8 +1661,8 @@ async function refreshTables(): Promise<void> {
 
 	try {
 		const tables: string[] = await listTables(current.sql, current.schema);
-
-		if (client === current) {
+		// Query runs list the tables, which mostly haven't changed.
+		if (client === current && !Bun.deepEquals(tables, $tables.get())) {
 			$tables.set(tables);
 		}
 	} catch (error) {
@@ -1346,12 +1682,30 @@ export function forgetTable(name: string): void {
 	setEntry($sorts, name, undefined);
 }
 
+export function forgetQuery(id: string): void {
+	runs.delete(id);
+	setEntry($querySql, id, undefined);
+	setEntry($queryResults, id, undefined);
+}
+
+// Closing the query tabs' connection ends any transaction they left open,
+// which the database rolls back.
+async function closeSql({ sql, queries }: Client): Promise<void> {
+	await Promise.all([
+		sql.close({ timeout: 0 }).catch(logError),
+		queries.close({ timeout: 0 }).catch(logError),
+	]);
+}
+
 export async function closeClient(): Promise<void> {
 	const closing: Client | null = client;
 
 	client = null;
 	sortNotice = null;
 	loads.clear();
+	runs.clear();
 
-	await closing?.sql.close({ timeout: 0 }).catch(logError);
+	if (closing) {
+		await closeSql(closing);
+	}
 }

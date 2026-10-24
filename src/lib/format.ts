@@ -22,6 +22,11 @@ const STRUCTURE: ReadonlySet<string> = new Set<string>([
 	":",
 ]);
 
+// A count with its noun, such as 1 row or 2 rows.
+export function plural(count: number, noun: string): string {
+	return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 // Takes the text's width when the caller has already measured it.
 export function fitText(
 	text: string,

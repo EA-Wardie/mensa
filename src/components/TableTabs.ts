@@ -1,18 +1,21 @@
 import * as core from "@opentui/core";
+import { closeAllTabs, closeTab } from "../lib/actions";
 import { theme } from "../lib/config";
-import { CLOSE_ICON, TAB_WIDTH } from "../lib/consts";
+import { ADD_ICON, CLOSE_ICON, QUERY_ICON, TAB_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { confirmDiscard, confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
-import { $activeTable, $openTables } from "../lib/store";
-import { closeAllTables, closeTable, openTable } from "../lib/tabs";
+import { $activeTab, $tabs, type Tab } from "../lib/store";
+import { newQuery, showTab, tabLabel } from "../lib/tabs";
 import { Menu } from "./Menu";
 
+// A tab, and whether it's on its close icon. A null tab is the + after the
+// tabs.
 interface Hit {
-	table: string;
+	tab: Tab | null;
 	close: boolean;
 }
 
@@ -21,13 +24,16 @@ const CLOSE_OFFSET: number = TAB_WIDTH - 2;
 
 const NAME_WIDTH: number = TAB_WIDTH - 5;
 
+// The + after the last tab: a space, the icon and a space.
+const ADD_WIDTH: number = 3;
+
 const SCROLL_LEFT: string = "‹";
 
 const SCROLL_RIGHT: string = "›";
 
 class TabBar extends core.Renderable {
-	private _open: readonly string[] = [];
-	private _active: string | null = null;
+	private _tabs: readonly Tab[] = [];
+	private _active: Tab | null = null;
 	private _first: number = 0;
 	private _hovered: Hit | null = null;
 	private _mouseX: number | null = null;
@@ -38,57 +44,64 @@ class TabBar extends core.Renderable {
 		this.registerStoreEvents();
 	}
 
+	// The + keeps its room, so it shows however many tabs are open.
 	private get slots(): number {
-		return Math.max(1, Math.floor(this.width / TAB_WIDTH));
+		return Math.max(1, Math.floor((this.width - ADD_WIDTH) / TAB_WIDTH));
 	}
 
 	// One past the last visible tab.
 	private get end(): number {
-		return Math.min(this._open.length, this._first + this.slots);
+		return Math.min(this._tabs.length, this._first + this.slots);
+	}
+
+	// Where the + is drawn, right after the last visible tab.
+	private get addOffset(): number {
+		return (this.end - this._first) * TAB_WIDTH;
 	}
 
 	// Where the › arrow is drawn, over the last visible tab's outer padding.
 	private get rightArrowOffset(): number {
-		return (this.end - this._first) * TAB_WIDTH - 1;
+		return this.addOffset - 1;
 	}
 
 	protected override renderSelf(buffer: core.OptimizedBuffer): void {
 		const end: number = this.end;
 
 		for (let index: number = this._first; index < end; index++) {
-			const table: string | undefined = this._open[index];
+			const tab: Tab | undefined = this._tabs[index];
 
-			if (table !== undefined) {
+			if (tab !== undefined) {
 				this.drawTab(
 					buffer,
-					table,
+					tab,
 					this.screenX + (index - this._first) * TAB_WIDTH,
 				);
 			}
 		}
 
 		if (this._first > 0) {
-			this.drawArrow(buffer, SCROLL_LEFT, 0, this._open[this._first]);
+			this.drawArrow(buffer, SCROLL_LEFT, 0, this._tabs[this._first]);
 		}
 
-		if (end < this._open.length) {
+		if (end < this._tabs.length) {
 			this.drawArrow(
 				buffer,
 				SCROLL_RIGHT,
 				this.rightArrowOffset,
-				this._open[end - 1],
+				this._tabs[end - 1],
 			);
 		}
+
+		this.drawAdd(buffer);
 	}
 
-	private drawTab(
-		buffer: core.OptimizedBuffer,
-		table: string,
-		x: number,
-	): void {
-		const active: boolean = table === this._active;
-		const hovered: boolean = this._hovered?.table === table;
+	private drawTab(buffer: core.OptimizedBuffer, tab: Tab, x: number): void {
+		const active: boolean = tab === this._active;
+		const hovered: boolean = this._hovered?.tab === tab;
 		const closeHovered: boolean = hovered && this._hovered?.close === true;
+		const label: string = displayText(
+			tab.kind === "query" ? `${QUERY_ICON} ${tabLabel(tab)}` : tabLabel(tab),
+		);
 
 		if (active || hovered) {
 			buffer.fillRect(
@@ -101,7 +114,7 @@ class TabBar extends core.Renderable {
 		}
 
 		buffer.drawText(
-			fitText(displayText(table), NAME_WIDTH),
+			fitText(label, NAME_WIDTH),
 			x + 1,
 			this.screenY,
 			active ? theme.fg_inverse : theme.fg,
@@ -116,18 +129,29 @@ class TabBar extends core.Renderable {
 		);
 	}
 
+	private drawAdd(buffer: core.OptimizedBuffer): void {
+		const x: number = this.screenX + this.addOffset;
+		const hovered: boolean = this._hovered?.tab === null;
+
+		if (hovered) {
+			buffer.fillRect(x, this.screenY, ADD_WIDTH, 1, theme.hover);
+		}
+
+		buffer.drawText(ADD_ICON, x + 1, this.screenY, theme.fg);
+	}
+
 	// Drawn over a tab's outer padding, in the colour of that tab's text.
 	private drawArrow(
 		buffer: core.OptimizedBuffer,
 		arrow: string,
 		offset: number,
-		table: string | undefined,
+		tab: Tab | undefined,
 	): void {
 		buffer.drawText(
 			arrow,
 			this.screenX + offset,
 			this.screenY,
-			table === this._active ? theme.fg_inverse : theme.fg,
+			tab === this._active ? theme.fg_inverse : theme.fg,
 		);
 	}
 
@@ -139,7 +163,7 @@ class TabBar extends core.Renderable {
 			return -1;
 		}
 
-		if (relative === this.rightArrowOffset && this.end < this._open.length) {
+		if (relative === this.rightArrowOffset && this.end < this._tabs.length) {
 			return 1;
 		}
 
@@ -152,20 +176,25 @@ class TabBar extends core.Renderable {
 		}
 
 		const relative: number = x - this.screenX;
+
+		if (relative >= this.addOffset && relative < this.addOffset + ADD_WIDTH) {
+			return { tab: null, close: false };
+		}
+
 		const slot: number = Math.floor(relative / TAB_WIDTH);
-		const table: string | undefined =
+		const tab: Tab | undefined =
 			relative >= 0 && slot < this.slots
-				? this._open[this._first + slot]
+				? this._tabs[this._first + slot]
 				: undefined;
 
-		if (table === undefined) {
+		if (tab === undefined) {
 			return null;
 		}
 
 		const column: number = relative % TAB_WIDTH;
 
 		return {
-			table: table,
+			tab: tab,
 			close: column >= CLOSE_OFFSET - 1 && column <= CLOSE_OFFSET + 1,
 		};
 	}
@@ -199,6 +228,7 @@ class TabBar extends core.Renderable {
 	private handleMouseDown(event: core.MouseEvent): void {
 		const arrow: number = this.arrowAt(event.x);
 		const hit: Hit | null = this.hitAt(event.x);
+		const left: boolean = event.button === core.MouseButton.LEFT;
 
 		if (event.button === core.MouseButton.RIGHT) {
 			this.handleMenu(event, hit);
@@ -206,7 +236,7 @@ class TabBar extends core.Renderable {
 			return;
 		}
 
-		if (arrow !== 0 && event.button === core.MouseButton.LEFT) {
+		if (arrow !== 0 && left) {
 			this.scrollTo(this._first + arrow);
 
 			return;
@@ -216,25 +246,27 @@ class TabBar extends core.Renderable {
 			return;
 		}
 
-		// Leaving the active tab, which holds the edited row, asks first when
-		// the row has unsaved changes.
-		const left: boolean = event.button === core.MouseButton.LEFT;
+		const { tab, close }: Hit = hit;
 
-		if (event.button === core.MouseButton.MIDDLE || (left && hit.close)) {
-			confirmDiscardIf(hit.table === this._active, (): void =>
-				closeTable(hit.table),
-			);
+		// Leaving the active tab, which holds the edited row, asks first when
+		// the row has unsaved changes. Closing asks for itself.
+		if (tab === null) {
+			if (left) {
+				confirmDiscard(newQuery);
+			}
+		} else if (event.button === core.MouseButton.MIDDLE || (left && close)) {
+			closeTab(tab);
 		} else if (left) {
-			confirmDiscardIf(hit.table !== this._active, (): void =>
-				openTable(hit.table),
-			);
+			confirmDiscardIf(tab !== this._active, (): void => showTab(tab));
 		}
 	}
 
 	// Right clicking a tab shows it first, which may ask to discard the edited
 	// row, and then opens the menu.
 	private handleMenu(event: core.MouseEvent, hit: Hit | null): void {
-		if (!hit) {
+		const tab: Tab | null = hit?.tab ?? null;
+
+		if (tab === null) {
 			return;
 		}
 
@@ -247,22 +279,20 @@ class TabBar extends core.Renderable {
 						label: `${CLOSE_ICON} Close`,
 						shortcut: shortcutLabel(SHORTCUTS.closeTab),
 						onSelect: (): void => {
-							confirmDiscard((): void => closeTable());
+							closeTab();
 						},
 					},
 					{
 						label: `${CLOSE_ICON} Close all`,
-						onSelect: (): void => {
-							confirmDiscard(closeAllTables);
-						},
+						onSelect: closeAllTabs,
 					},
 				],
 			});
 		};
 
-		if (hit.table !== this._active) {
+		if (tab !== this._active) {
 			confirmDiscard((): void => {
-				openTable(hit.table);
+				showTab(tab);
 				show();
 			});
 		} else {
@@ -279,7 +309,7 @@ class TabBar extends core.Renderable {
 	}
 
 	private scrollTo(first: number): void {
-		const max: number = Math.max(0, this._open.length - this.slots);
+		const max: number = Math.max(0, this._tabs.length - this.slots);
 
 		this._first = clamp(first, 0, max);
 
@@ -290,7 +320,7 @@ class TabBar extends core.Renderable {
 	// Scrolls the least needed to bring the active tab into view.
 	private reveal(): void {
 		const index: number =
-			this._active === null ? -1 : this._open.indexOf(this._active);
+			this._active === null ? -1 : this._tabs.indexOf(this._active);
 
 		let first: number = this._first;
 
@@ -308,7 +338,7 @@ class TabBar extends core.Renderable {
 			this._mouseX === null ? null : this.hitAt(this._mouseX);
 
 		if (
-			hovered?.table === this._hovered?.table &&
+			hovered?.tab === this._hovered?.tab &&
 			hovered?.close === this._hovered?.close
 		) {
 			return;
@@ -322,12 +352,12 @@ class TabBar extends core.Renderable {
 	private registerStoreEvents(): void {
 		unbindOnDestroy(
 			this,
-			$openTables.subscribe((open: readonly string[]): void => {
-				this._open = open;
+			$tabs.subscribe((tabs: readonly Tab[]): void => {
+				this._tabs = tabs;
 
 				this.reveal();
 			}),
-			$activeTable.subscribe((active: string | null): void => {
+			$activeTab.subscribe((active: Tab | null): void => {
 				this._active = active;
 
 				this.reveal();
@@ -336,6 +366,7 @@ class TabBar extends core.Renderable {
 	}
 }
 
+// Always shown once connected, so the + can open a query with no tabs open.
 export class TableTabs {
 	private _component: core.BoxRenderable;
 
@@ -346,24 +377,13 @@ export class TableTabs {
 			flexShrink: 0,
 			border: ["top"],
 			borderColor: theme.border,
-			visible: $openTables.get().length > 0,
 			...options,
 		});
 
 		this._component.add(new TabBar());
-		this.registerStoreEvents();
 	}
 
 	public static make(options: core.BoxOptions = {}): core.BoxRenderable {
 		return new this(options)._component;
-	}
-
-	private registerStoreEvents(): void {
-		unbindOnDestroy(
-			this._component,
-			$openTables.listen((open: readonly string[]): void => {
-				this._component.visible = open.length > 0;
-			}),
-		);
 	}
 }

@@ -96,6 +96,55 @@ export interface EditorTarget {
 	column: string | null;
 }
 
+export interface TableTab {
+	kind: "table";
+	table: string;
+}
+
+export interface QueryTab {
+	kind: "query";
+	// A number, as text, shown as Query 1.
+	id: string;
+}
+
+export type Tab = TableTab | QueryTab;
+
+// Where in the SQL an error is, from 1.
+export interface TextPosition {
+	line: number;
+	column: number;
+}
+
+// A query tab's last run. Rows are kept up to the row limit, and total counts
+// them all. An error keeps the SQL it ran, so editing it shows the error is
+// stale.
+export type QueryResult =
+	| { status: "idle" }
+	| { status: "running" }
+	| {
+			status: "rows";
+			columns: string[];
+			kinds: TypeKind[];
+			rows: Value[][];
+			total: number;
+			ms: number;
+	  }
+	| {
+			status: "done";
+			// The kind of statement, such as INSERT. MySQL doesn't send it.
+			command: string | null;
+			// The rows written, or null for a statement that doesn't count them,
+			// such as CREATE TABLE.
+			affected: number | null;
+			ms: number;
+	  }
+	| {
+			status: "error";
+			message: string;
+			at: TextPosition | null;
+			sql: string;
+	  };
+
 export const $screen = nanostores.atom<Screen>("connections");
 
 export const $connections = nanostores.atom<ConnectionConfig[]>(connections);
@@ -117,9 +166,34 @@ export const $tables = nanostores.atom<string[]>([]);
 
 export const $selectedTable = nanostores.atom<string | null>(null);
 
-export const $openTables = nanostores.atom<string[]>([]);
+// The tabs, in order. A tab is compared by reference, so the same table or
+// query keeps its object while it is open.
+export const $tabs = nanostores.atom<readonly Tab[]>([]);
 
-export const $activeTable = nanostores.atom<string | null>(null);
+export const $activeTab = nanostores.atom<Tab | null>(null);
+
+// The open tables, in tab order, for what only cares about tables.
+export const $openTables: nanostores.ReadableAtom<string[]> =
+	nanostores.computed($tabs, (tabs: readonly Tab[]): string[] =>
+		tabs.flatMap((tab: Tab): string[] =>
+			tab.kind === "table" ? [tab.table] : [],
+		),
+	);
+
+// The active tab's table, or null when a query or no tab is active.
+export const $activeTable: nanostores.ReadableAtom<string | null> =
+	nanostores.computed($activeTab, (tab: Tab | null): string | null =>
+		tab?.kind === "table" ? tab.table : null,
+	);
+
+// Each open query tab's SQL, by its id. Nothing redraws for it, so it can
+// follow every key.
+export const $querySql = nanostores.atom<Readonly<Record<string, string>>>({});
+
+// The result of each open query tab's last run, by its id.
+export const $queryResults = nanostores.atom<
+	Readonly<Record<string, QueryResult>>
+>({});
 
 export const $tableData = nanostores.atom<Readonly<Record<string, TableData>>>(
 	{},
