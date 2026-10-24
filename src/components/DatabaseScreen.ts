@@ -3,6 +3,7 @@ import { ctx } from "../lib/context";
 import { DatabaseFooter } from "./DatabaseFooter";
 import { DataGrid } from "./DataGrid";
 import { Flex } from "./Flex";
+import { QueryView } from "./QueryView";
 import { RowEditor } from "./RowEditor";
 import { TableSidebar } from "./TableSidebar";
 import { TableTabs } from "./TableTabs";
@@ -11,6 +12,8 @@ export class DatabaseScreen {
 	private _component: core.BoxRenderable;
 
 	constructor() {
+		const grid: DataGrid = DataGrid.make();
+
 		this._component = new core.BoxRenderable(ctx, {
 			width: "100%",
 			height: "100%",
@@ -23,7 +26,12 @@ export class DatabaseScreen {
 				flexGrow: 1,
 				flexShrink: 1,
 				width: "auto",
-				components: [TableTabs.make(), DataGrid.make(), DatabaseFooter.make()],
+				components: [
+					TableTabs.make(),
+					grid,
+					QueryView.host(grid),
+					DatabaseFooter.make(),
+				],
 			}),
 		);
 		this._component.add(RowEditor.host());

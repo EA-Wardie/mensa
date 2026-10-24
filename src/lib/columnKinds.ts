@@ -32,16 +32,17 @@ const TYPE_ICONS: Record<TypeKind, string> = {
 };
 
 // A primary key column is shown as one, also when it's in a foreign key too.
+// Without meta, such as for a query's rows, every column shows its type.
 export function columnKind(
-	meta: TableMeta,
+	meta: TableMeta | null,
 	column: string,
 	type: TypeKind,
 ): ColumnKind {
-	if (meta.primaryKey.includes(column)) {
+	if (meta?.primaryKey.includes(column)) {
 		return "primary";
 	}
 
-	if (meta.foreignKeys.includes(column)) {
+	if (meta?.foreignKeys.includes(column)) {
 		return "foreign";
 	}
 

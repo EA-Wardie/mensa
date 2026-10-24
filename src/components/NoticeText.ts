@@ -17,6 +17,8 @@ interface Options extends core.TextOptions {
 export class NoticeText {
 	private _options: Options;
 	private _component: core.TextRenderable;
+	// What it shows, since setting the same content still lays it out again.
+	private _text: string | null = null;
 
 	constructor(options: Options) {
 		const {
@@ -43,8 +45,13 @@ export class NoticeText {
 
 	private update(): void {
 		const notice: string = $notice.get();
+		const text: string = displayText(notice || this._options.fallback());
 
-		this._component.content = displayText(notice || this._options.fallback());
+		if (text !== this._text) {
+			this._text = text;
+			this._component.content = text;
+		}
+
 		this._component.fg = notice
 			? theme.danger
 			: (this._options.fallbackColor ?? theme.fg);

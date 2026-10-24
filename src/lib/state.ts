@@ -2,9 +2,19 @@ import { type ConnectionConfig, connections, isTable } from "./config";
 import { STATE_PATH, STATE_SAVE_DELAY } from "./consts";
 import { logError } from "./log";
 
+// A query tab's id and its SQL.
+export interface SavedQuery {
+	query: string;
+	sql: string;
+}
+
+// A table tab by its name, or a query tab.
+export type SavedTab = string | SavedQuery;
+
 export interface TabsState {
-	open: string[];
-	active: string | null;
+	open: SavedTab[];
+	// The active tab's index in open.
+	active: number | null;
 }
 
 interface State {
@@ -12,11 +22,35 @@ interface State {
 	tabs: Record<string, TabsState>;
 }
 
-function isStringArray(value: unknown): value is string[] {
+// A query's id is its number, which its tab shows.
+function isSavedTab(value: unknown): value is SavedTab {
 	return (
-		Array.isArray(value) &&
-		value.every((item: unknown): boolean => typeof item === "string")
+		typeof value === "string" ||
+		(isTable(value) &&
+			typeof value.query === "string" &&
+			/^[1-9][0-9]*$/.test(value.query) &&
+			typeof value.sql === "string")
 	);
+}
+
+function isSavedTabs(value: unknown): value is SavedTab[] {
+	return Array.isArray(value) && value.every(isSavedTab);
+}
+
+// Before query tabs, the active tab was saved by its table's name.
+function parseActive(open: SavedTab[], active: unknown): number | null {
+	if (typeof active === "string") {
+		const index: number = open.indexOf(active);
+
+		return index < 0 ? null : index;
+	}
+
+	return typeof active === "number" &&
+		Number.isInteger(active) &&
+		active >= 0 &&
+		active < open.length
+		? active
+		: null;
 }
 
 // Keeps the tabs of connections that are still in the config.
@@ -33,11 +67,8 @@ function parseTabs(value: unknown): Record<string, TabsState> {
 			? entry
 			: {};
 
-		if (isStringArray(open)) {
-			tabs[name] = {
-				open: open,
-				active: typeof active === "string" ? active : null,
-			};
+		if (isSavedTabs(open)) {
+			tabs[name] = { open: open, active: parseActive(open, active) };
 		}
 	}
 
@@ -127,10 +158,7 @@ export function rememberTabs(
 ): void {
 	const saved: TabsState | undefined = state.tabs[connection.name];
 
-	if (
-		saved?.active === tabs.active &&
-		saved.open.join("\0") === tabs.open.join("\0")
-	) {
+	if (Bun.deepEquals(saved, tabs)) {
 		return;
 	}
 

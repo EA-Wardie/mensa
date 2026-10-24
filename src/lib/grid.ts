@@ -1,9 +1,17 @@
 import { type ColumnIcon, columnIcon, columnKind } from "./columnKinds";
 import { MAX_COLUMN_WIDTH } from "./consts";
 import { displayText, fitText, NULL_TEXT } from "./format";
-import type { LoadedTable, TableData, Value } from "./store";
+import type { TableData, TableMeta, TypeKind, Value } from "./store";
 
 export type Cell = string | null;
+
+// What a grid shows: a loaded table, or a query's rows, which have no keys.
+export interface GridSource {
+	columns: string[];
+	kinds: TypeKind[];
+	rows: Value[][];
+	meta: TableMeta | null;
+}
 
 // Column names and cells are fitted to their column once per load, so a frame
 // only draws them.
@@ -44,7 +52,7 @@ function measure(value: Value): Measured {
 }
 
 // Each text is measured once, both to size its column and to fit it.
-function makeGrid({ columns, kinds, rows, meta }: LoadedTable): Grid {
+function makeGrid({ columns, kinds, rows, meta }: GridSource): Grid {
 	const header: Measured[] = columns.map(measure);
 	const measured: Measured[][] = rows.map((row: Value[]): Measured[] =>
 		row.map(measure),
@@ -85,17 +93,17 @@ function makeGrid({ columns, kinds, rows, meta }: LoadedTable): Grid {
 	};
 }
 
-export function gridFor(data: TableData | undefined): Grid | null {
-	if (data?.status !== "loaded") {
-		return null;
-	}
-
-	let grid: Grid | undefined = GRIDS.get(data.rows);
+export function gridOf(source: GridSource): Grid {
+	let grid: Grid | undefined = GRIDS.get(source.rows);
 
 	if (!grid) {
-		grid = makeGrid(data);
-		GRIDS.set(data.rows, grid);
+		grid = makeGrid(source);
+		GRIDS.set(source.rows, grid);
 	}
 
 	return grid;
+}
+
+export function gridFor(data: TableData | undefined): Grid | null {
+	return data?.status === "loaded" ? gridOf(data) : null;
 }

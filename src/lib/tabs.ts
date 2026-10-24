@@ -1,93 +1,183 @@
 import type { ConnectionConfig } from "./config";
-import { discardRows, forgetTable, loadTable } from "./database";
-import { rememberedTabs, rememberTabs, type TabsState } from "./state";
 import {
+	discardRows,
+	forgetQuery,
+	forgetTable,
+	loadTable,
+	type RunOutcome,
+	refreshTables,
+	runQuery,
+} from "./database";
+import {
+	rememberedTabs,
+	rememberTabs,
+	type SavedTab,
+	type TabsState,
+} from "./state";
+import {
+	$activeTab,
 	$activeTable,
 	$connection,
 	$openTables,
+	$queryResults,
+	$querySql,
 	$selectedRows,
 	$selectedTable,
 	$sorts,
 	$tableData,
 	$tables,
+	$tabs,
+	type QueryTab,
 	type Sort,
 	setEntry,
+	type Tab,
 	type TableData,
 } from "./store";
+
+function saveTab(tab: Tab): SavedTab {
+	return tab.kind === "table"
+		? tab.table
+		: { query: tab.id, sql: $querySql.get()[tab.id] ?? "" };
+}
 
 function saveTabs(
 	connection: ConnectionConfig | null = $connection.get(),
 ): void {
+	const tabs: readonly Tab[] = $tabs.get();
+	const active: Tab | null = $activeTab.get();
+
 	if (connection) {
 		rememberTabs(connection, {
-			open: $openTables.get(),
-			active: $activeTable.get(),
+			open: tabs.map(saveTab),
+			active: active === null ? null : tabs.indexOf(active),
 		});
 	}
 }
 
-// Shows a tab and selects it in the sidebar, loading it the first time it is
-// shown, or again if it failed. With no tab left, the sidebar keeps its
-// selection.
-function activate(table: string | null): void {
-	$activeTable.set(table);
+// Shows a tab, loading a table the first time it is shown, or again if it
+// failed, and selecting it in the sidebar. With no tab left, or a query
+// shown, the sidebar keeps its selection.
+function activate(tab: Tab | null): void {
+	$activeTab.set(tab);
 
-	if (table !== null) {
-		$selectedTable.set(table);
+	if (tab?.kind !== "table") {
+		return;
 	}
 
-	const data: TableData | undefined =
-		table === null ? undefined : $tableData.get()[table];
+	const data: TableData | undefined = $tableData.get()[tab.table];
 
-	if (table !== null && (!data || data.status === "error")) {
-		loadTable(table);
+	$selectedTable.set(tab.table);
+
+	if (!data || data.status === "error") {
+		loadTable(tab.table);
 	}
 }
 
 export function openTable(name: string): void {
-	const open: string[] = $openTables.get();
+	const tabs: readonly Tab[] = $tabs.get();
+	const open: Tab | undefined = tabs.find(
+		(tab: Tab): boolean => tab.kind === "table" && tab.table === name,
+	);
+	const tab: Tab = open ?? { kind: "table", table: name };
 
-	if (!open.includes(name)) {
-		$openTables.set([...open, name]);
+	if (!open) {
+		$tabs.set([...tabs, tab]);
 	}
 
-	activate(name);
+	activate(tab);
 	saveTabs();
 }
 
-export function closeTable(name: string | null = $activeTable.get()): void {
-	if (name !== null) {
-		closeTables([name]);
+function addQuery(id: string, sql: string): QueryTab {
+	setEntry($querySql, id, sql);
+	setEntry($queryResults, id, { status: "idle" });
+
+	return { kind: "query", id: id };
+}
+
+// Opens an empty query tab, numbered one past the highest open one.
+export function newQuery(): void {
+	const tabs: readonly Tab[] = $tabs.get();
+	const highest: number = Math.max(
+		0,
+		...tabs.map((tab: Tab): number =>
+			tab.kind === "query" ? Number(tab.id) || 0 : 0,
+		),
+	);
+	const tab: QueryTab = addQuery(String(highest + 1), "");
+
+	$tabs.set([...tabs, tab]);
+	activate(tab);
+	saveTabs();
+}
+
+export function tabLabel(tab: Tab): string {
+	return tab.kind === "table" ? tab.table : `Query ${tab.id}`;
+}
+
+// Keeps a query tab's SQL, which is saved with its tab.
+export function setQuerySql(id: string, sql: string): void {
+	const queries: Readonly<Record<string, string>> = $querySql.get();
+
+	if (id in queries && queries[id] !== sql) {
+		setEntry($querySql, id, sql);
+		saveTabs();
 	}
 }
 
-export function closeAllTables(): void {
-	closeTables($openTables.get());
+// Runs a query tab's SQL. A run that may have made or dropped a table lists
+// the tables again, and one that may have written loads the open tables
+// again, the active one now and the others when shown.
+export async function runQueryTab(id: string): Promise<void> {
+	const sql: string = $querySql.get()[id] ?? "";
+	const outcome: RunOutcome =
+		sql.trim() === "" ? "skipped" : await runQuery(id, sql);
+
+	if (outcome === "ran" || outcome === "wrote") {
+		await refreshTables();
+	}
+
+	if (outcome === "wrote") {
+		reloadOpenTables();
+	}
 }
 
-// Closes the tabs in one go. When the active one closes, the tab that was
-// after it shows, or else the last one.
-function closeTables(names: readonly string[]): void {
-	const open: string[] = $openTables.get();
-	const active: string | null = $activeTable.get();
-	const remaining: string[] = open.filter(
-		(table: string): boolean => !names.includes(table),
+// Runs the active tab's SQL, if it's a query.
+export function runActiveQuery(): void {
+	const tab: Tab | null = $activeTab.get();
+
+	if (tab?.kind === "query") {
+		runQueryTab(tab.id);
+	}
+}
+
+// Closes the tabs in one go, without asking. When the active one closes, the
+// tab that was after it shows, or else the last one.
+export function closeTabs(closing: readonly Tab[]): void {
+	const tabs: readonly Tab[] = $tabs.get();
+	const active: Tab | null = $activeTab.get();
+	const remaining: Tab[] = tabs.filter(
+		(tab: Tab): boolean => !closing.includes(tab),
 	);
 
-	if (remaining.length === open.length) {
+	if (remaining.length === tabs.length) {
 		return;
 	}
 
-	$openTables.set(remaining);
+	$tabs.set(remaining);
 
-	for (const name of names) {
-		forgetTable(name);
+	for (const tab of closing) {
+		if (tab.kind === "table") {
+			forgetTable(tab.table);
+		} else {
+			forgetQuery(tab.id);
+		}
 	}
 
-	if (active !== null && names.includes(active)) {
-		const before: number = open
-			.slice(0, open.indexOf(active))
-			.filter((table: string): boolean => remaining.includes(table)).length;
+	if (active !== null && closing.includes(active)) {
+		const before: number = tabs
+			.slice(0, tabs.indexOf(active))
+			.filter((tab: Tab): boolean => remaining.includes(tab)).length;
 
 		activate(remaining[Math.min(before, remaining.length - 1)] ?? null);
 	}
@@ -100,10 +190,13 @@ function closeTables(names: readonly string[]): void {
 $tables.listen((tables: readonly string[]): void => {
 	const selected: string | null = $selectedTable.get();
 
-	closeTables(
-		$openTables
+	closeTabs(
+		$tabs
 			.get()
-			.filter((table: string): boolean => !tables.includes(table)),
+			.filter(
+				(tab: Tab): boolean =>
+					tab.kind === "table" && !tables.includes(tab.table),
+			),
 	);
 
 	if (selected !== null && !tables.includes(selected)) {
@@ -127,18 +220,23 @@ export function reloadOpenTables(): void {
 	}
 }
 
-export function cycleTable(step: number): void {
-	const open: string[] = $openTables.get();
-	const active: string | null = $activeTable.get();
+export function cycleTab(step: number): void {
+	const tabs: readonly Tab[] = $tabs.get();
+	const active: Tab | null = $activeTab.get();
 
-	if (!open.length) {
+	if (!tabs.length) {
 		return;
 	}
 
-	const index: number = active === null ? 0 : open.indexOf(active);
-	const next: number = (index + step + open.length) % open.length;
+	const index: number = active === null ? 0 : tabs.indexOf(active);
+	const next: number = (index + step + tabs.length) % tabs.length;
 
-	activate(open[next] ?? null);
+	activate(tabs[next] ?? null);
+	saveTabs();
+}
+
+export function showTab(tab: Tab): void {
+	activate(tab);
 	saveTabs();
 }
 
@@ -175,8 +273,9 @@ export function selectRow(
 	}
 }
 
-// Reopens the connection's saved tabs that still exist. Only the active one
-// loads now, and the others when they are shown.
+// Reopens the connection's saved tabs: the tables that still exist, and the
+// queries with their SQL. Only the active table loads now, and the others
+// when they are shown.
 export function restoreTabs(connection: ConnectionConfig): void {
 	const saved: TabsState | null = rememberedTabs(connection);
 	const tables: string[] = $tables.get();
@@ -185,24 +284,33 @@ export function restoreTabs(connection: ConnectionConfig): void {
 		return;
 	}
 
-	const open: string[] = saved.open.filter((table: string): boolean =>
-		tables.includes(table),
-	);
+	const restored: (Tab | null)[] = saved.open.map(
+		(tab: SavedTab): Tab | null => {
+			if (typeof tab !== "string") {
+				return addQuery(tab.query, tab.sql);
+			}
 
-	$openTables.set(open);
-	activate(
-		saved.active !== null && open.includes(saved.active)
-			? saved.active
-			: (open[0] ?? null),
+			return tables.includes(tab) ? { kind: "table", table: tab } : null;
+		},
 	);
+	const open: Tab[] = restored.filter(
+		(tab: Tab | null): tab is Tab => tab !== null,
+	);
+	const active: Tab | null =
+		saved.active === null ? null : (restored[saved.active] ?? null);
+
+	$tabs.set(open);
+	activate(active ?? open[0] ?? null);
 	saveTabs(connection);
 }
 
 // Clears the tabs without saving, so the connection keeps its saved tabs.
 export function resetTabs(): void {
-	$openTables.set([]);
-	$activeTable.set(null);
+	$tabs.set([]);
+	$activeTab.set(null);
 	$tableData.set({});
 	$sorts.set({});
 	$selectedRows.set({});
+	$querySql.set({});
+	$queryResults.set({});
 }

@@ -13,15 +13,16 @@ import {
 	CLOSE_ICON,
 	DATABASE_ICON,
 	DELETE_ICON,
+	QUERY_ICON,
 	SIDEBAR_WIDTH,
 	SWITCH_ICON,
 	TRUNCATE_ICON,
 } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { confirmDiscardIf } from "../lib/editor";
+import { confirmDiscard, confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
-import { SHORTCUTS } from "../lib/shortcuts";
+import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import {
 	$activeTable,
 	$connection,
@@ -31,7 +32,7 @@ import {
 	$selectedTable,
 	$tables,
 } from "../lib/store";
-import { openTable } from "../lib/tabs";
+import { newQuery, openTable } from "../lib/tabs";
 import { IconButton } from "./IconButton";
 import { List } from "./List";
 import { Menu, type MenuItem } from "./Menu";
@@ -202,6 +203,14 @@ export class TableSidebar {
 			x: x,
 			y: y,
 			items: [
+				{
+					label: `${QUERY_ICON} New query`,
+					shortcut: shortcutLabel(SHORTCUTS.newQuery),
+					onSelect: (): void => {
+						confirmDiscard(newQuery);
+					},
+				},
+				"divider",
 				...(others.length
 					? [
 							{

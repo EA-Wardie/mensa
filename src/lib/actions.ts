@@ -11,14 +11,19 @@ import {
 import { confirmDiscardIf } from "./editor";
 import { switchConnection } from "./session";
 import {
+	$activeTab,
 	$connection,
 	$editor,
 	$notice,
+	$querySql,
 	$schema,
 	$tableData,
+	$tabs,
+	type QueryTab,
+	type Tab,
 	type TableData,
 } from "./store";
-import { reloadOpenTables, reloadTable } from "./tabs";
+import { closeTabs, reloadOpenTables, reloadTable, tabLabel } from "./tabs";
 
 interface Write {
 	// Whether the write replaces the edited rows, so it asks about unsaved
@@ -152,4 +157,49 @@ export function switchTo(connection: ConnectionConfig): void {
 	confirmDiscardIf($editor.get() !== null, (): void => {
 		switchConnection(connection);
 	});
+}
+
+// Closes tabs, asking first when the edited row's tab is among them, and then
+// when a query tab would lose its SQL.
+function closeTabsAsking(tabs: readonly Tab[]): void {
+	const editing: boolean = tabs.some(
+		(tab: Tab): boolean => tab.kind === "table" && isEditing(tab.table),
+	);
+
+	confirmDiscardIf(editing, (): void => {
+		const written: QueryTab[] = tabs.filter(
+			(tab: Tab): tab is QueryTab =>
+				tab.kind === "query" && ($querySql.get()[tab.id] ?? "").trim() !== "",
+		);
+		const [first]: QueryTab[] = written;
+
+		if (!first) {
+			closeTabs(tabs);
+
+			return;
+		}
+
+		Confirmation.make({
+			heading:
+				written.length === 1 ? `Close ${tabLabel(first)}?` : "Close queries?",
+			description:
+				written.length === 1
+					? "Its SQL will be lost."
+					: `The SQL of ${written.length} queries will be lost.`,
+			confirmLabel: "Close",
+			onConfirm: (): void => {
+				closeTabs(tabs);
+			},
+		});
+	});
+}
+
+export function closeTab(tab: Tab | null = $activeTab.get()): void {
+	if (tab !== null) {
+		closeTabsAsking([tab]);
+	}
+}
+
+export function closeAllTabs(): void {
+	closeTabsAsking($tabs.get());
 }

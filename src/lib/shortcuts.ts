@@ -1,6 +1,8 @@
 import type * as core from "@opentui/core";
 import { Confirmation } from "../components/Confirmation";
-import { DataGrid } from "../components/DataGrid";
+import { GridView } from "../components/GridView";
+import { QueryView } from "../components/QueryView";
+import { closeTab } from "./actions";
 import type { ConnectionConfig } from "./config";
 import { QUIT_TIMEOUT } from "./consts";
 import { ctx } from "./context";
@@ -20,7 +22,7 @@ import {
 	moveSelection,
 	type Screen,
 } from "./store";
-import { closeTable, cycleTable, openTable, selectRow } from "./tabs";
+import { cycleTab, newQuery, openTable, runActiveQuery } from "./tabs";
 
 type Run = () => void;
 
@@ -45,10 +47,11 @@ function quit(): void {
 	});
 }
 
-function withGrid(action: (grid: DataGrid) => void): Run {
+// Acts on the shown grid: the table's, or the query's results.
+function withGrid(action: (grid: GridView) => void): Run {
 	return (): void => {
-		if (DataGrid.current) {
-			action(DataGrid.current);
+		if (GridView.current) {
+			action(GridView.current);
 		}
 	};
 }
@@ -120,7 +123,7 @@ export const SHORTCUTS = {
 		description: "Show the next tab",
 		screen: "database",
 		run: (): void => {
-			cycleTable(1);
+			cycleTab(1);
 		},
 	},
 	previousTab: {
@@ -128,7 +131,7 @@ export const SHORTCUTS = {
 		description: "Show the previous tab",
 		screen: "database",
 		run: (): void => {
-			cycleTable(-1);
+			cycleTab(-1);
 		},
 	},
 	closeTab: {
@@ -136,66 +139,86 @@ export const SHORTCUTS = {
 		description: "Close the active tab",
 		screen: "database",
 		run: (): void => {
-			closeTable();
+			closeTab();
+		},
+	},
+	runQuery: {
+		key: "ctrl+return",
+		description: "Run the query",
+		screen: "database",
+		run: (): void => {
+			runActiveQuery();
+		},
+	},
+	newQuery: {
+		key: "n",
+		description: "Open a new query tab",
+		screen: "database",
+		run: (): void => {
+			newQuery();
 		},
 	},
 	pageUp: {
 		key: "pageup",
 		description: "Scroll the rows up a page",
 		screen: "database",
-		run: withGrid((grid: DataGrid): void => grid.scrollPage(-1)),
+		run: withGrid((grid: GridView): void => grid.scrollPage(-1)),
 	},
 	pageDown: {
 		key: "pagedown",
 		description: "Scroll the rows down a page",
 		screen: "database",
-		run: withGrid((grid: DataGrid): void => grid.scrollPage(1)),
+		run: withGrid((grid: GridView): void => grid.scrollPage(1)),
 	},
 	firstRow: {
 		key: "home",
 		description: "Scroll to the first row",
 		screen: "database",
-		run: withGrid((grid: DataGrid): void => grid.scrollToEdge(false)),
+		run: withGrid((grid: GridView): void => grid.scrollToEdge(false)),
 	},
 	lastRow: {
 		key: "end",
 		description: "Scroll to the last row",
 		screen: "database",
-		run: withGrid((grid: DataGrid): void => grid.scrollToEdge(true)),
+		run: withGrid((grid: GridView): void => grid.scrollToEdge(true)),
 	},
 	columnLeft: {
 		key: "left",
 		alias: "h",
 		description: "Scroll the columns left",
 		screen: "database",
-		run: withGrid((grid: DataGrid): void => grid.scrollColumns(-1)),
+		run: withGrid((grid: GridView): void => grid.scrollColumns(-1)),
 	},
 	columnRight: {
 		key: "right",
 		alias: "l",
 		description: "Scroll the columns right",
 		screen: "database",
-		run: withGrid((grid: DataGrid): void => grid.scrollColumns(1)),
+		run: withGrid((grid: GridView): void => grid.scrollColumns(1)),
 	},
 	editRow: {
 		key: "e",
-		description: "Edit the selected row",
+		description: "Edit the selected row, or the query's SQL",
 		screen: "database",
-		run: withGrid((grid: DataGrid): void => {
-			const row: number | null = grid.selectedRow();
+		run: (): void => {
+			// A query's rows aren't edited, so E edits its SQL instead. Otherwise
+			// the shown grid is the table's.
+			if (QueryView.focusShown()) {
+				return;
+			}
+
+			const row: number | null = GridView.current?.selectedRow() ?? null;
 
 			if (row !== null) {
 				editRow(row, null);
 			}
-		}),
+		},
 	},
 	clearRow: {
 		key: "escape",
 		description: "Clear the selected row",
 		screen: "database",
-		run: (): void => {
-			selectRow(null);
-		},
+		run: withGrid((grid: GridView): void => grid.clearSelection()),
 	},
 	disconnect: {
 		key: "c",
