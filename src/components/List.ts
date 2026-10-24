@@ -15,6 +15,8 @@ interface Options<T> extends core.RenderableOptions<List<T>> {
 	bold?: (item: T) => boolean;
 	redrawOn?: ReadableAtom<unknown>[];
 	onActivate: (item: T) => void;
+	// Opens the item's menu at the mouse, after right clicking selects it.
+	onMenu?: (item: T, x: number, y: number) => void;
 }
 
 export class List<T> extends core.Renderable {
@@ -173,6 +175,17 @@ export class List<T> extends core.Renderable {
 		const index: number | null =
 			event.target === this ? this.rowAt(event.y) : null;
 		const item: T | undefined = index === null ? undefined : this._items[index];
+
+		if (item !== undefined && event.button === core.MouseButton.RIGHT) {
+			this._clicks.reset();
+
+			if (this._options.onMenu) {
+				this._options.selected.set(item);
+				this._options.onMenu(item, event.x, event.y);
+			}
+
+			return;
+		}
 
 		if (item === undefined || event.button !== core.MouseButton.LEFT) {
 			this._clicks.reset();

@@ -32,6 +32,8 @@ export const TAB_WIDTH: number = 24;
 
 export const EDITOR_WIDTH: number = 48;
 
+export const MENU_WIDTH: number = 30;
+
 // Longer values are edited in a textarea, which wraps them.
 export const INPUT_MAX_LENGTH: number = 200;
 
@@ -51,6 +53,12 @@ export const ELLIPSIS: string = "…";
 export const CLOSE_ICON: string = "󰅖";
 
 export const EDIT_ICON: string = "󰏫";
+
+export const DELETE_ICON: string = "󰆴";
+
+export const TRUNCATE_ICON: string = "󰃢";
+
+export const SWITCH_ICON: string = "󰓡";
 
 export const KEY_ICON: string = "󰌋";
 

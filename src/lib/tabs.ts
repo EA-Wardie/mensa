@@ -1,5 +1,5 @@
 import type { ConnectionConfig } from "./config";
-import { forgetTable, loadTable } from "./database";
+import { discardRows, forgetTable, loadTable } from "./database";
 import { rememberedTabs, rememberTabs, type TabsState } from "./state";
 import {
 	$activeTable,
@@ -56,25 +56,75 @@ export function openTable(name: string): void {
 }
 
 export function closeTable(name: string | null = $activeTable.get()): void {
-	const open: string[] = $openTables.get();
-	const index: number = name === null ? -1 : open.indexOf(name);
+	if (name !== null) {
+		closeTables([name]);
+	}
+}
 
-	if (name === null || index < 0) {
+export function closeAllTables(): void {
+	closeTables($openTables.get());
+}
+
+// Closes the tabs in one go. When the active one closes, the tab that was
+// after it shows, or else the last one.
+function closeTables(names: readonly string[]): void {
+	const open: string[] = $openTables.get();
+	const active: string | null = $activeTable.get();
+	const remaining: string[] = open.filter(
+		(table: string): boolean => !names.includes(table),
+	);
+
+	if (remaining.length === open.length) {
 		return;
 	}
 
-	const remaining: string[] = open.filter(
-		(table: string): boolean => table !== name,
-	);
-
 	$openTables.set(remaining);
-	forgetTable(name);
 
-	if ($activeTable.get() === name) {
-		activate(remaining[Math.min(index, remaining.length - 1)] ?? null);
+	for (const name of names) {
+		forgetTable(name);
+	}
+
+	if (active !== null && names.includes(active)) {
+		const before: number = open
+			.slice(0, open.indexOf(active))
+			.filter((table: string): boolean => remaining.includes(table)).length;
+
+		activate(remaining[Math.min(before, remaining.length - 1)] ?? null);
 	}
 
 	saveTabs();
+}
+
+// A table that is no longer listed, such as after a drop, closes its tab and
+// leaves the sidebar's selection.
+$tables.listen((tables: readonly string[]): void => {
+	const selected: string | null = $selectedTable.get();
+
+	closeTables(
+		$openTables
+			.get()
+			.filter((table: string): boolean => !tables.includes(table)),
+	);
+
+	if (selected !== null && !tables.includes(selected)) {
+		$selectedTable.set($activeTable.get() ?? tables[0] ?? null);
+	}
+});
+
+// Loads an open table again, keeping its sort, after its rows changed
+// underneath it. The active table loads now, and another when it is shown.
+export function reloadTable(name: string): void {
+	if (name === $activeTable.get()) {
+		loadTable(name);
+	} else if ($openTables.get().includes(name)) {
+		discardRows(name);
+	}
+}
+
+export function reloadOpenTables(): void {
+	for (const table of $openTables.get()) {
+		reloadTable(table);
+	}
 }
 
 export function cycleTable(step: number): void {

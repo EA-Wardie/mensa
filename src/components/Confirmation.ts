@@ -1,5 +1,5 @@
 import * as core from "@opentui/core";
-import { theme } from "../lib/config";
+import { doubleClickTimeout, theme } from "../lib/config";
 import { CANCEL_ICON, CONFIRM_ICON } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { displayText } from "../lib/format";
@@ -10,6 +10,10 @@ interface Options {
 	heading: string;
 	description: string;
 	confirmLabel: string;
+	// A deliberate confirmation takes a click on its button, not Return, and
+	// ignores clicks for a double click's time after it opens, so a repeated
+	// Return or a double click on an earlier dialog can't confirm it.
+	deliberate?: boolean;
 	onConfirm: () => void;
 }
 
@@ -20,6 +24,7 @@ export class Confirmation {
 	// What had the focus, which the dialog takes while it's open and gives
 	// back when it closes.
 	private _focused: core.Renderable | null;
+	private _openedAt: number = Date.now();
 
 	constructor(options: Options) {
 		this._options = options;
@@ -100,7 +105,12 @@ export class Confirmation {
 				label: `${CONFIRM_ICON} ${this._options.confirmLabel}`,
 				variant: "danger",
 				onClick: (): void => {
-					this.confirm();
+					if (
+						!this._options.deliberate ||
+						Date.now() - this._openedAt >= doubleClickTimeout
+					) {
+						this.confirm();
+					}
 				},
 			}),
 		);
@@ -109,7 +119,7 @@ export class Confirmation {
 	}
 
 	private onKeypress = (key: core.KeyEvent): void => {
-		if (key.name === "return") {
+		if (key.name === "return" && !this._options.deliberate) {
 			this.confirm();
 		}
 

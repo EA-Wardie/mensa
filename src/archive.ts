@@ -2,7 +2,7 @@ import { version } from "../package.json";
 
 // The built binaries that are released, each archived with the install script
 // and the icon.
-const PLATFORMS: readonly string[] = ["darwin-x64", "linux-x64"];
+const PLATFORMS: readonly string[] = ["darwin-arm64", "linux-x64"];
 
 const SHARED_FILES: readonly string[] = ["install.sh", "icon.png"];
 

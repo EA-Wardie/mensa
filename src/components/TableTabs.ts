@@ -2,12 +2,14 @@ import * as core from "@opentui/core";
 import { theme } from "../lib/config";
 import { CLOSE_ICON, TAB_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { confirmDiscardIf } from "../lib/editor";
+import { confirmDiscard, confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
+import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import { $activeTable, $openTables } from "../lib/store";
-import { closeTable, openTable } from "../lib/tabs";
+import { closeAllTables, closeTable, openTable } from "../lib/tabs";
+import { Menu } from "./Menu";
 
 interface Hit {
 	table: string;
@@ -198,6 +200,12 @@ class TabBar extends core.Renderable {
 		const arrow: number = this.arrowAt(event.x);
 		const hit: Hit | null = this.hitAt(event.x);
 
+		if (event.button === core.MouseButton.RIGHT) {
+			this.handleMenu(event, hit);
+
+			return;
+		}
+
 		if (arrow !== 0 && event.button === core.MouseButton.LEFT) {
 			this.scrollTo(this._first + arrow);
 
@@ -220,6 +228,41 @@ class TabBar extends core.Renderable {
 			confirmDiscardIf(hit.table !== this._active, (): void =>
 				openTable(hit.table),
 			);
+		}
+	}
+
+	// Right clicking a tab shows it first. The menu opens anywhere on the bar,
+	// once the tab is shown, which may ask to discard the edited row.
+	private handleMenu(event: core.MouseEvent, hit: Hit | null): void {
+		const show: () => void = (): void => {
+			Menu.make({
+				x: event.x,
+				y: event.y,
+				items: [
+					{
+						label: `${CLOSE_ICON} Close`,
+						shortcut: shortcutLabel(SHORTCUTS.closeTab),
+						onSelect: (): void => {
+							confirmDiscard((): void => closeTable());
+						},
+					},
+					{
+						label: `${CLOSE_ICON} Close all`,
+						onSelect: (): void => {
+							confirmDiscard(closeAllTables);
+						},
+					},
+				],
+			});
+		};
+
+		if (hit && hit.table !== this._active) {
+			confirmDiscard((): void => {
+				openTable(hit.table);
+				show();
+			});
+		} else {
+			show();
 		}
 	}
 

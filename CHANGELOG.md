@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.4
+
+### Added
+
+- Context menus, opened by right clicking. Clicking outside a menu or `Escape` closes it, and the shortcuts pause while one is open.
+- A row's menu has Edit, which opens it in the editor, and Delete, which deletes it after confirming. The row is matched by its primary key, so rows of views and of tables without one can't be deleted.
+- The tab bar's menu has Close and Close all. Right clicking a tab switches to it first.
+- A sidebar table's menu has Truncate, which deletes all its rows, and Delete, which drops the table or view, each after confirming. A table that others reference fails with the database's error rather than emptying or changing them. Truncating restarts a Postgres table's identity columns, as MySQL does.
+- The database name's menu has Switch, which lists the other connections to switch to, and Truncate all and Drop all, which empty every table or drop every table and view in the schema. Each asks twice, and the second confirmation needs a click on its button rather than `Return`, which it ignores at first so a double click can't confirm it. References between the schema's tables don't stop them: Postgres truncates or drops them all in one statement, in one transaction, and MySQL turns off foreign key checks on one connection. A table or view outside the schema that depends on one inside it stops them on Postgres instead, so nothing outside the schema changes.
+
+### Changed
+
+- The sidebar shows "No tables" once the last one is dropped.
+- `bun run archive` packs the Apple silicon macOS binary, `dist/mensa-darwin-arm64`, into `dist/Release-darwin-arm64 <version>.tar.xz`, instead of the Intel one.
+
 ## 0.2.3
 
 ### Added

@@ -1,18 +1,31 @@
 import * as core from "@opentui/core";
+import {
+	dropAllTables,
+	dropTableNamed,
+	switchTo,
+	truncateAllTables,
+	truncateTableNamed,
+} from "../lib/actions";
+import type { ConnectionConfig } from "../lib/config";
 import { theme } from "../lib/config";
 import {
 	APP_TITLE,
 	CLOSE_ICON,
 	DATABASE_ICON,
+	DELETE_ICON,
 	SIDEBAR_WIDTH,
+	SWITCH_ICON,
+	TRUNCATE_ICON,
 } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
+import { unbindOnDestroy } from "../lib/lifetime";
 import { SHORTCUTS } from "../lib/shortcuts";
 import {
 	$activeTable,
 	$connection,
+	$connections,
 	$openTables,
 	$schema,
 	$selectedTable,
@@ -21,6 +34,7 @@ import {
 import { openTable } from "../lib/tabs";
 import { IconButton } from "./IconButton";
 import { List } from "./List";
+import { Menu, type MenuItem } from "./Menu";
 import { Message } from "./Message";
 
 export class TableSidebar {
@@ -78,6 +92,11 @@ export class TableSidebar {
 			justifyContent: "space-between",
 			flexShrink: 0,
 			paddingLeft: 1,
+			onMouseDown: (event: core.MouseEvent): void => {
+				if (event.button === core.MouseButton.RIGHT) {
+					this.showConnectionMenu(event.x, event.y);
+				}
+			},
 		});
 
 		header.add(
@@ -103,42 +122,128 @@ export class TableSidebar {
 		this._component.add(header);
 	}
 
+	// The message shows while there are no tables, such as after dropping them
+	// all.
 	private addTables(): void {
-		if (!$tables.get().length) {
-			const empty: core.BoxRenderable = new core.BoxRenderable(ctx, {
-				paddingX: 1,
-			});
+		const empty: core.BoxRenderable = new core.BoxRenderable(ctx, {
+			paddingX: 1,
+		});
+		const schema: string = $schema.get();
+		const list: List<string> = List.make<string>({
+			flexGrow: 1,
+			width: "100%",
+			items: $tables,
+			selected: $selectedTable,
+			label: (table: string): string => `󰓫 ${table}`,
+			bold: (table: string): boolean => $openTables.get().includes(table),
+			redrawOn: [$openTables],
+			// Another table's tab would close the row editor.
+			onActivate: (table: string): void => {
+				confirmDiscardIf(table !== $activeTable.get(), (): void =>
+					openTable(table),
+				);
+			},
+			onMenu: (table: string, x: number, y: number): void => {
+				this.showTableMenu(table, x, y);
+			},
+		});
 
-			const schema: string = $schema.get();
-
-			empty.add(
-				Message.make({
-					content: schema
-						? `No tables in ${displayText(schema)}`
-						: "Could not list tables",
-				}),
-			);
-			this._component.add(empty);
-
-			return;
-		}
-
-		this._component.add(
-			List.make<string>({
-				flexGrow: 1,
-				width: "100%",
-				items: $tables,
-				selected: $selectedTable,
-				label: (table: string): string => `󰓫 ${table}`,
-				bold: (table: string): boolean => $openTables.get().includes(table),
-				redrawOn: [$openTables],
-				// Another table's tab would close the row editor.
-				onActivate: (table: string): void => {
-					confirmDiscardIf(table !== $activeTable.get(), (): void =>
-						openTable(table),
-					);
-				},
+		empty.add(
+			Message.make({
+				content: schema
+					? `No tables in ${displayText(schema)}`
+					: "Could not list tables",
 			}),
 		);
+		this._component.add(empty);
+		this._component.add(list);
+
+		unbindOnDestroy(
+			this._component,
+			$tables.subscribe((tables: readonly string[]): void => {
+				empty.visible = !tables.length;
+				list.visible = tables.length > 0;
+			}),
+		);
+	}
+
+	private showTableMenu(table: string, x: number, y: number): void {
+		Menu.make({
+			x: x,
+			y: y,
+			items: [
+				{
+					label: `${TRUNCATE_ICON} Truncate`,
+					danger: true,
+					onSelect: (): void => {
+						truncateTableNamed(table);
+					},
+				},
+				{
+					label: `${DELETE_ICON} Delete`,
+					danger: true,
+					onSelect: (): void => {
+						dropTableNamed(table);
+					},
+				},
+			],
+		});
+	}
+
+	private showConnectionMenu(x: number, y: number): void {
+		const others: ConnectionConfig[] = $connections
+			.get()
+			.filter(
+				(connection: ConnectionConfig): boolean =>
+					connection !== $connection.get(),
+			);
+
+		Menu.make({
+			x: x,
+			y: y,
+			items: [
+				...(others.length
+					? [
+							{
+								label: `${SWITCH_ICON} Switch`,
+								shortcut: "›",
+								onSelect: (): void => {
+									this.showConnectionsMenu(others, x, y);
+								},
+							},
+							"divider" as const,
+						]
+					: []),
+				{
+					label: `${TRUNCATE_ICON} Truncate all`,
+					danger: true,
+					onSelect: truncateAllTables,
+				},
+				{
+					label: `${DELETE_ICON} Drop all`,
+					danger: true,
+					onSelect: dropAllTables,
+				},
+			],
+		});
+	}
+
+	private showConnectionsMenu(
+		connections: ConnectionConfig[],
+		x: number,
+		y: number,
+	): void {
+		Menu.make({
+			x: x,
+			y: y,
+			items: connections.map(
+				(connection: ConnectionConfig): MenuItem => ({
+					label: `${DATABASE_ICON} ${connection.name}`,
+					onSelect: (): void => {
+						switchTo(connection);
+					},
+				}),
+			),
+		});
 	}
 }

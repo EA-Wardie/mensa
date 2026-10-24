@@ -13,6 +13,7 @@ import {
 	$notice,
 	$schema,
 	$screen,
+	$selectedConnection,
 	$selectedTable,
 	$tables,
 } from "./store";
@@ -68,4 +69,14 @@ export async function disconnect(): Promise<void> {
 	$screen.set("connections");
 
 	await closing;
+}
+
+// Closes the connection and opens another, selected in the list, so one that
+// fails to connect leaves the connections screen on it, showing why.
+export async function switchConnection(
+	connection: ConnectionConfig,
+): Promise<void> {
+	await disconnect();
+	$selectedConnection.set(connection);
+	await connect(connection);
 }
