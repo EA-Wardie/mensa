@@ -67,5 +67,5 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 
 - When reviewing, simplifying or writing TypeScript in `src/`, load the `typescript-expert` skill, and `typescript-advanced-types` for type-level work.
 - When working with `@opentui/core`, such as components in `src/components/`, rendering, layout, input, colours or the renderer in `src/lib/context.ts`, load the `opentui` skill.
-- When changing the queries or a `Dialect` in `src/lib/database.ts`, load `postgresql-code-review` for Postgres and `mysql` for MySQL.
-- This includes `/code-review` and `/simplify`. Tell any subagents they start to load these skills too.
+- When changing or reviewing the queries or a `Dialect` in `src/lib/database.ts`, load `postgresql-code-review` for Postgres and `mysql` for MySQL.
+- This includes `/code-review` and `/simplify`. Before reviewing, load every skill above that matches a file in the diff, such as `opentui` for a component and `postgresql-code-review` and `mysql` for a change to `database.ts`. Name the matching skills in each subagent's prompt, so it loads them before reading the code.
