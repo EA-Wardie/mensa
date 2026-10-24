@@ -1,7 +1,13 @@
 import * as core from "@opentui/core";
+import { deleteRowAt } from "../lib/actions";
 import { DoubleClick } from "../lib/clicks";
 import { theme } from "../lib/config";
-import { SORT_ASC_ICON, SORT_DESC_ICON } from "../lib/consts";
+import {
+	DELETE_ICON,
+	EDIT_ICON,
+	SORT_ASC_ICON,
+	SORT_DESC_ICON,
+} from "../lib/consts";
 import { ctx } from "../lib/context";
 import { confirmDiscard, editRow } from "../lib/editor";
 import { displayText, fitText, NULL_TEXT } from "../lib/format";
@@ -14,6 +20,7 @@ import {
 } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
+import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import {
 	$activeTable,
 	$activeTableData,
@@ -27,6 +34,7 @@ import {
 } from "../lib/store";
 import { selectRow, sortTable } from "../lib/tabs";
 import { HorizontalScrollBar } from "./HorizontalScrollBar";
+import { Menu } from "./Menu";
 
 interface Position {
 	x: number;
@@ -503,6 +511,7 @@ export class DataGrid extends core.Renderable {
 
 				this.handleHeaderDown(event);
 				this.handleRowDown(event);
+				this.handleRowMenu(event);
 				break;
 			case "up":
 			case "drag-end":
@@ -560,15 +569,9 @@ export class DataGrid extends core.Renderable {
 	}
 
 	// Clicking a row selects it, and double clicking a cell edits its row. While
-	// the editor is open, the selection stays on its row. Clicks on the
-	// scrollbars bubble up here too, so only the grid's own count.
+	// the editor is open, the selection stays on its row.
 	private handleRowDown(event: core.MouseEvent): void {
-		const index: number | null =
-			event.button !== core.MouseButton.LEFT ||
-			event.target !== this ||
-			event.x >= this.screenX + this.bodyWidth
-				? null
-				: this.rowAt(event.y);
+		const index: number | null = this.bodyRowAt(event, core.MouseButton.LEFT);
 
 		if (index === null) {
 			this._clicks.reset();
@@ -588,6 +591,44 @@ export class DataGrid extends core.Renderable {
 		}
 	}
 
+	// Right clicking a row opens its menu, and selects it unless the editor is
+	// open. The menu acts on the rows it was opened on.
+	private handleRowMenu(event: core.MouseEvent): void {
+		const index: number | null = this.bodyRowAt(event, core.MouseButton.RIGHT);
+		const table: string | null = this._table;
+		const data: TableData | undefined = this._data;
+
+		if (index === null || table === null || data?.status !== "loaded") {
+			return;
+		}
+
+		if ($editor.get() === null) {
+			selectRow(index);
+		}
+
+		Menu.make({
+			x: event.x,
+			y: event.y,
+			items: [
+				{
+					label: `${EDIT_ICON} Edit`,
+					shortcut: shortcutLabel(SHORTCUTS.editRow),
+					onSelect: (): void => {
+						editRow(index, null);
+					},
+				},
+				"divider",
+				{
+					label: `${DELETE_ICON} Delete`,
+					danger: true,
+					onSelect: (): void => {
+						deleteRowAt({ table: table, rows: data.rows, row: index });
+					},
+				},
+			],
+		});
+	}
+
 	private handleScroll(event: core.MouseEvent): void {
 		const direction: string | undefined = event.scroll?.direction;
 		const step: number = Math.max(1, Math.round(event.scroll?.delta ?? 1));
@@ -605,6 +646,19 @@ export class DataGrid extends core.Renderable {
 		} else {
 			this.scrollRows(sign * step);
 		}
+	}
+
+	// The row a press of the button is on. Presses on the scrollbars bubble up
+	// here too, so only the grid's own count.
+	private bodyRowAt(
+		event: core.MouseEvent,
+		button: core.MouseButton,
+	): number | null {
+		return event.button !== button ||
+			event.target !== this ||
+			event.x >= this.screenX + this.bodyWidth
+			? null
+			: this.rowAt(event.y);
 	}
 
 	private rowAt(y: number): number | null {

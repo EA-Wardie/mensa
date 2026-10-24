@@ -20,6 +20,8 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. The database sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column the database can't sort, such as Postgres `json`, is reported in the footer and the rows stay as they were.
 - Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
 - Edit a row in a sidebar by double clicking one of its cells, or with `E` on the selected row. Every column has a field: an input, or a textarea for long and multi-line text, a list to pick from for booleans and enums, and a textarea with the value pretty printed for JSON, which must parse before it saves. A nullable column has a `NULL` toggle, so an empty text and the text `NULL` stay strings. Save writes only the columns that changed, matched by the primary key, and the grid shows the row as the database stored it. Rows of views and of tables without a primary key open read only. Generated columns are read only, as are MySQL binary, bit and spatial values. Editing on Postgres needs version 12 or later.
+- Delete a row, truncate or drop a table or view, and truncate or drop every table in the schema, from context menus. Each asks first, and the schema wide ones ask twice. Truncating restarts a Postgres table's identity columns, as MySQL does. Truncating or dropping one table that others reference fails with the database's error rather than emptying or changing them, while the schema wide ones handle the references between the schema's tables. On Postgres, a table or view outside the schema that depends on one inside it stops them, so nothing outside the schema changes. Rows of views and of tables without a primary key can't be deleted.
+- Switch to another connection from the database name's menu.
 - Several tables open at once, as tabs with a close button. The sidebar selects the active tab's table. Each tab remembers its scroll position, and each connection remembers its open tabs.
 - Values shown as the database formats them as text, so a date has no time and a Postgres `timestamptz` is in the session's time zone. MySQL binary and blob values are shown as hex, such as `0x00FF`, bits in binary, such as `101`, and spatial values as text, such as `POINT(1 2)`. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
 - mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
@@ -27,7 +29,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - A themeable UI, configurable through a user config file.
 - First party mouse support.
 
-This version can edit existing rows, but can't insert or delete rows or run queries.
+This version can edit and delete existing rows, but can't insert rows or run queries.
 
 ## Controls
 
@@ -49,7 +51,8 @@ This version can edit existing rows, but can't insert or delete rows or run quer
 | `Escape` | Editor | Close, asking first when there are unsaved changes |
 | `C` | Tables | Close the connection, after confirming |
 | `Q` | Everywhere | Quit, after confirming |
-| `Return`, `Escape` | Confirmation | Confirm or cancel |
+| `Return`, `Escape` | Confirmation | Confirm or cancel. The second confirmation for truncating or dropping every table needs a click instead of `Return`. |
+| `Escape` | Menu | Close the menu |
 
 Mouse controls:
 
@@ -60,6 +63,11 @@ Mouse controls:
 - Click a column header to sort by it. Each click moves it from no sort to ascending, then descending, then back to no sort. Sorting another column replaces the current sort.
 - The mouse wheel scrolls the lists and the grid's rows. Shift with the wheel, or a horizontal wheel, scrolls the grid's columns. You can also drag the scrollbars.
 - The close button in the sidebar header closes the connection.
+- Right click to open a menu, and click an item to choose it. Clicking outside the menu or `Escape` closes it, and other keys are paused while it's open.
+  - A row: Edit opens it in the editor, and Delete deletes it. Right clicking selects the row, unless the editor is open.
+  - A tab, or anywhere on the tab bar: Close closes the active tab, and Close all closes every tab. Right clicking a tab switches to it first.
+  - A table in the sidebar: Truncate deletes all its rows, and Delete drops it, or the view.
+  - The database name in the sidebar header: Switch lists the other connections to switch to. Truncate all empties every table, and Drop all drops every table and view.
 
 ## Installation
 
@@ -73,7 +81,7 @@ bun run install:app
 
 `bun install --os="*" --cpu="*"` installs OpenTUI's native library for every platform, since the build compiles a binary for each one: `dist/mensa-linux-x64`, `mensa-linux-arm64`, `mensa-darwin-x64` and `mensa-darwin-arm64`.
 
-`bun run archive` then packs `dist/mensa-darwin-x64` and `dist/mensa-linux-x64`, each with the install script and the icon, into `dist/Release-darwin-x64 <version>.tar.xz` and `dist/Release-linux-x64 <version>.tar.xz` for a release. Extract one and run `install.sh` from it.
+`bun run archive` then packs `dist/mensa-darwin-arm64` and `dist/mensa-linux-x64`, each with the install script and the icon, into `dist/Release-darwin-arm64 <version>.tar.xz` and `dist/Release-linux-x64 <version>.tar.xz` for a release. Extract one and run `install.sh` from it.
 
 The install script picks the binary for your system and installs it to `~/.local/bin/mensa`. On Linux it also adds a desktop entry to `~/.local/share/applications`. On macOS it removes the quarantine attribute, so a downloaded binary can run.
 
