@@ -57,6 +57,7 @@ interface PostgresColumnRow {
 	nullable: boolean;
 	generated: boolean;
 	key_position: number | null;
+	foreign_key: boolean;
 	enum_values: string | null;
 	relation_kind: string;
 }
@@ -69,15 +70,18 @@ interface MysqlColumnRow {
 	is_nullable: string;
 	generation_expression: string | null;
 	key_position: number | bigint | string | null;
+	foreign_key: number | bigint | string;
 	table_type: string;
 }
 
-// The table metadata and the key position of each column, which the dialects
-// turn into a TableMeta the same way. A key column that isn't matchable is
-// loaded in a form that can't be compared back, such as MySQL's hex.
+// The table metadata, the key position of each column and whether it's in a
+// foreign key, which the dialects turn into a TableMeta the same way. A key
+// column that isn't matchable is loaded in a form that can't be compared back,
+// such as MySQL's hex.
 interface DescribedColumn {
 	meta: ColumnMeta;
 	keyPosition: number | null;
+	foreign: boolean;
 	matchable: boolean;
 }
 
@@ -221,6 +225,9 @@ function makeTableMeta(
 			]),
 		),
 		primaryKey: keys.map((column: DescribedColumn): string => column.meta.name),
+		foreignKeys: described
+			.filter((column: DescribedColumn): boolean => column.foreign)
+			.map((column: DescribedColumn): string => column.meta.name),
 		readOnly:
 			readOnly ??
 			(!keys.length
@@ -289,6 +296,12 @@ async function describePostgres(
 			NOT a.attnotnull AS nullable,
 			(a.attgenerated <> '' OR a.attidentity = 'a') AS generated,
 			array_position(i.indkey::int2[], a.attnum) AS key_position,
+			EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_constraint f
+				WHERE f.conrelid = c.oid AND f.contype = 'f'
+					AND a.attnum = ANY (f.conkey)
+			) AS foreign_key,
 			CASE WHEN t.typtype = 'e' THEN (
 				SELECT json_agg(e.enumlabel ORDER BY e.enumsortorder)::text
 				FROM pg_catalog.pg_enum e
@@ -318,6 +331,7 @@ async function describePostgres(
 					edit: postgresEdit(row),
 				},
 				keyPosition: row.key_position,
+				foreign: row.foreign_key,
 				matchable: true,
 			}),
 		),
@@ -404,6 +418,14 @@ async function describeMysql(
 			c.is_nullable AS is_nullable,
 			c.generation_expression AS generation_expression,
 			s.seq_in_index AS key_position,
+			EXISTS (
+				SELECT 1
+				FROM information_schema.key_column_usage k
+				WHERE k.table_schema = c.table_schema
+					AND k.table_name = c.table_name
+					AND k.column_name = c.column_name
+					AND k.referenced_table_name IS NOT NULL
+			) AS foreign_key,
 			t.table_type AS table_type
 		FROM information_schema.columns c
 		JOIN information_schema.tables t
@@ -430,6 +452,7 @@ async function describeMysql(
 				},
 				keyPosition:
 					row.key_position === null ? null : Number(row.key_position),
+				foreign: Number(row.foreign_key) === 1,
 				// Binary, bit and spatial values are loaded as text the column
 				// can't be compared with.
 				matchable: !MYSQL_TEXT_FORMS.has(row.data_type.toLowerCase()),
@@ -591,6 +614,7 @@ async function listColumns(
 			return {
 				columns: new Map<string, ColumnMeta>(),
 				primaryKey: [],
+				foreignKeys: [],
 				readOnly: `Could not read the table's columns, so its rows can't be edited: ${errorMessage(error)}`,
 			};
 		}),

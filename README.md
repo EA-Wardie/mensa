@@ -17,6 +17,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Postgres and MySQL connections defined in a user config file, listed on the start screen. A connection that fails is reported in the footer.
 - The tables and views in the `public` schema on Postgres, or the connection's database on MySQL, listed in a sidebar once connected.
 - Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that.
+- An icon before each column name. Primary key columns have a yellow key and foreign key columns a white one, in the text colour, and a column in both shows the primary key's. Other columns have a muted icon for their type: text, integer, decimal, boolean (also MySQL's `tinyint(1)`), date, time, timestamp, interval, JSON, UUID, enum, binary, array, spatial, network, XML, or a generic one for other types.
 - Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. The database sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column the database can't sort, such as Postgres `json`, is reported in the footer and the rows stay as they were.
 - Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
 - Edit a row in a sidebar by double clicking one of its cells, or with `E` on the selected row. Every column has a field: an input, or a textarea for long and multi-line text, a list to pick from for booleans and enums, and a textarea with the value pretty printed for JSON, which must parse before it saves. A nullable column has a `NULL` toggle, so an empty text and the text `NULL` stay strings. Save writes only the columns that changed, matched by the primary key, and the grid shows the row as the database stored it. Rows of views and of tables without a primary key open read only. Generated columns are read only, as are MySQL binary, bit and spatial values. Editing on Postgres needs version 12 or later.
@@ -65,7 +66,7 @@ Mouse controls:
 - The close button in the sidebar header closes the connection.
 - Right click to open a menu, and click an item to choose it. Clicking outside the menu or `Escape` closes it, and other keys are paused while it's open.
   - A row: Edit opens it in the editor, and Delete deletes it. Right clicking selects the row, unless the editor is open.
-  - A tab, or anywhere on the tab bar: Close closes the active tab, and Close all closes every tab. Right clicking a tab switches to it first.
+  - A tab: Close closes the active tab, and Close all closes every tab. Right clicking a tab switches to it first.
   - A table in the sidebar: Truncate deletes all its rows, and Delete drops it, or the view.
   - The database name in the sidebar header: Switch lists the other connections to switch to. Truncate all empties every table, and Drop all drops every table and view.
 
@@ -140,6 +141,7 @@ fg = "#fafafa"
 border = "#d4d4d4"
 success = "#16a34a"
 danger = "#dc2626"
+warning = "#eab308"  # the primary key icon
 accent = "#0369a1"
 # surface defaults to an opaque bg
 ```

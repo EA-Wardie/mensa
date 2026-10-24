@@ -17,6 +17,7 @@ const THEME_KEYS = [
 	"border",
 	"success",
 	"danger",
+	"warning",
 	"accent",
 	"surface",
 ] as const;
@@ -46,6 +47,7 @@ export interface ThemeType {
 	success_pressed: RGBA;
 	danger: RGBA;
 	danger_pressed: RGBA;
+	warning: RGBA;
 }
 
 const SSL_MODES = [
@@ -387,6 +389,7 @@ const defaultTheme: Record<BaseColorKey, string> = {
 	border: "#d4d4d4",
 	success: "#16a34a",
 	danger: "#dc2626",
+	warning: "#eab308",
 	accent: "#0369a1",
 };
 
@@ -500,6 +503,7 @@ function makeTheme(config: unknown): ThemeType {
 		success_pressed: withAlpha(success, 0.75),
 		danger,
 		danger_pressed: withAlpha(danger, 0.75),
+		warning: color("warning"),
 	};
 }
 

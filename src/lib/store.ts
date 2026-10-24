@@ -37,6 +37,8 @@ export interface TableMeta {
 	// A Map, since a column can be named like an Object property.
 	columns: Map<string, ColumnMeta>;
 	primaryKey: string[];
+	// The columns in any foreign key, in table order.
+	foreignKeys: string[];
 	// Why the table's rows can't be saved, or null.
 	readOnly: string | null;
 }

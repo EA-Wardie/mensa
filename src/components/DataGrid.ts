@@ -1,6 +1,7 @@
 import * as core from "@opentui/core";
 import { deleteRowAt } from "../lib/actions";
 import { DoubleClick } from "../lib/clicks";
+import { COLUMN_ICONS, type ColumnKind } from "../lib/columnKinds";
 import { theme } from "../lib/config";
 import {
 	DELETE_ICON,
@@ -17,6 +18,7 @@ import {
 	columnSpan,
 	type Grid,
 	gridFor,
+	ICON_SPACE,
 } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
@@ -306,9 +308,21 @@ export class DataGrid extends core.Renderable {
 		this.forEachColumn(
 			grid,
 			(index: number, x: number, separator: number): void => {
+				const kind: ColumnKind = grid.kinds[index] ?? "other";
+
+				buffer.drawText(
+					COLUMN_ICONS[kind],
+					x + CELL_PADDING,
+					y,
+					kind === "primary"
+						? theme.warning
+						: kind === "foreign"
+							? theme.fg
+							: theme.muted,
+				);
 				buffer.drawText(
 					grid.columns[index] ?? "",
-					x + CELL_PADDING,
+					x + CELL_PADDING + ICON_SPACE,
 					y,
 					theme.fg,
 					undefined,

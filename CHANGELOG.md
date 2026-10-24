@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.5
+
+### Added
+
+- Icons in the grid's column headers. Primary key columns have a yellow key and foreign key columns a white one, in the text colour, and a column in both shows the primary key's. The yellow is the new `warning` theme colour. Other columns have a muted icon for their type, such as text, integer, decimal, boolean, date, time, timestamp, JSON, UUID or enum.
+
+### Changed
+
+- The tab bar's menu opens only when right clicking a tab, not the empty bar beside the tabs or its scroll arrows.
+
 ## 0.2.4
 
 ### Added
