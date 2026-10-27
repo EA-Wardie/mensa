@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
-    <string>English</string>
+    <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>Mensa</string>
+    <string>launcher</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
@@ -19,8 +19,8 @@
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleVersion</key>
-    <string>17</string>
+    <string>{{BUILD}}</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.7</string>
+    <string>{{VERSION}}</string>
 </dict>
 </plist>
