@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.7
+
+### Added
+
+- A refresh button in the sidebar header, or `Ctrl+R`, lists the tables again, which closes the tabs of tables that are gone. A divider splits it and the close button from the database name.
+- A refresh button at the left of the footer, or `R`, loads the active table again, or runs the active query again. It asks first when the edited row has unsaved changes. A divider splits it from the footer text.
+- Truncate and close buttons in the footer, after refresh, act on the active tab. Truncate asks first. The buttons are shown only while a tab is open, and truncate only for a table tab.
+- Copy as CSV and Copy as JSON in a row's menu. CSV has the column names and the row. JSON is one object keyed by column name, with numbers (keeping the database's digits), booleans and JSON values typed, and NULL as `null`.
+- A `*` after a table's column name marks it `NOT NULL`. Query results have no marks.
+
+### Changed
+
+- The sidebar is wider, 42 columns instead of 34.
+- Truncate all and drop all ask once, like the other writes, and `Return` confirms them.
+- A tab is as wide as its name, at least 16 columns, so long table names aren't cut.
+
+### Fixed
+
+- Errors in the footer stayed until the connection closed. They now clear on the next action, such as switching tabs, sorting, refreshing, running a query, saving a row or confirming a write.
+- On narrow screens the tabs left a gap before the edge of the bar. Tabs that don't all fit now reach the `+` at the edge, with the last one cut there.
+
+### Internal
+
+- `refreshTables` resolves to its error, or null, and `refreshSchema` in `lib/actions.ts` shows it. `refreshActiveTab` in `lib/tabs.ts` reloads the active table or runs the active query.
+- A `joined` vertical `Divider` meets its parent's top and bottom borders with tees.
+- `lib/clipboard.ts` copies through OpenTUI's clipboard service, the host's clipboard or else OSC 52, and is disposed on quit. `lib/export.ts` formats a row as CSV or JSON.
+- `Confirmation` no longer has a `deliberate` option, and `confirmWrite` no longer takes a `warning`.
+- `clearNotice` in `lib/store.ts` clears `$notice`, and each action calls it as it starts. A failed sort's notice is no longer tracked separately, since the next action clears it. `errorMessage` and `isJson` moved to `lib/format.ts`, and the box drawing tees to `lib/consts.ts`.
+- `TabBar` sizes each tab from its label, clips the tabs at the `+` with a scissor rect, and scrolls to the earliest first tab from which the rest fit.
+
 ## 0.2.6
 
 ### Added

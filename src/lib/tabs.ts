@@ -27,6 +27,7 @@ import {
 	$tableData,
 	$tables,
 	$tabs,
+	clearNotice,
 	type QueryTab,
 	type Sort,
 	setEntry,
@@ -58,6 +59,7 @@ function saveTabs(
 // failed, and selecting it in the sidebar. With no tab left, or a query
 // shown, the sidebar keeps its selection.
 function activate(tab: Tab | null): void {
+	clearNotice();
 	$activeTab.set(tab);
 
 	if (tab?.kind !== "table") {
@@ -130,6 +132,9 @@ export function setQuerySql(id: string, sql: string): void {
 // again, the active one now and the others when shown.
 export async function runQueryTab(id: string): Promise<void> {
 	const sql: string = $querySql.get()[id] ?? "";
+
+	clearNotice();
+
 	const outcome: RunOutcome =
 		sql.trim() === "" ? "skipped" : await runQuery(id, sql);
 
@@ -214,6 +219,18 @@ export function reloadTable(name: string): void {
 	}
 }
 
+// Loads the active table again, or runs the active query again.
+export function refreshActiveTab(): void {
+	const tab: Tab | null = $activeTab.get();
+
+	if (tab?.kind === "query") {
+		runActiveQuery();
+	} else if (tab?.kind === "table") {
+		clearNotice();
+		reloadTable(tab.table);
+	}
+}
+
 export function reloadOpenTables(): void {
 	for (const table of $openTables.get()) {
 		reloadTable(table);
@@ -251,6 +268,8 @@ export function sortTable(
 	}
 
 	const sort: Sort | undefined = $sorts.get()[table];
+
+	clearNotice();
 
 	if (sort?.column !== column) {
 		setEntry($sorts, table, { column: column, direction: "asc" });

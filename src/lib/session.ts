@@ -1,10 +1,6 @@
 import type { ConnectionConfig } from "./config";
-import {
-	closeClient,
-	errorMessage,
-	type OpenedClient,
-	openClient,
-} from "./database";
+import { closeClient, type OpenedClient, openClient } from "./database";
+import { errorMessage } from "./format";
 import { logError } from "./log";
 import { rememberConnection } from "./state";
 import {
@@ -16,6 +12,7 @@ import {
 	$selectedConnection,
 	$selectedTable,
 	$tables,
+	clearNotice,
 } from "./store";
 import { resetTabs, restoreTabs } from "./tabs";
 
@@ -27,7 +24,7 @@ export async function connect(connection: ConnectionConfig): Promise<void> {
 	let opened: OpenedClient | null = null;
 
 	$connecting.set(connection);
-	$notice.set("");
+	clearNotice();
 
 	try {
 		opened = await openClient(connection);
@@ -62,7 +59,7 @@ export async function disconnect(): Promise<void> {
 	rememberConnection(null);
 	resetTabs();
 	$connection.set(null);
-	$notice.set("");
+	clearNotice();
 	$schema.set("");
 	$tables.set([]);
 	$selectedTable.set(null);

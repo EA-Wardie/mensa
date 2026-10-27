@@ -24,11 +24,12 @@ export const DEFAULT_DOUBLE_CLICK_TIMEOUT: number = 250;
 
 export const CONNECTION_TIMEOUT: number = 10;
 
-export const SIDEBAR_WIDTH: number = 34;
+export const SIDEBAR_WIDTH: number = 42;
 
 export const CONNECTIONS_WIDTH: number = 72;
 
-export const TAB_WIDTH: number = 24;
+// A tab is as wide as its name needs, and at least this wide.
+export const TAB_MIN_WIDTH: number = 16;
 
 export const EDITOR_WIDTH: number = 48;
 
@@ -55,15 +56,28 @@ export const MAX_COLUMN_WIDTH: number = 40;
 
 export const ELLIPSIS: string = "…";
 
+// Box drawing, for lines that join the borders they meet.
+export const SEPARATOR: string = "│";
+
+export const TOP_TEE: string = "┬";
+
+export const CROSS: string = "┼";
+
+export const BOTTOM_TEE: string = "┴";
+
 export const CLOSE_ICON: string = "󰅖";
 
 export const ADD_ICON: string = "󰐕";
+
+export const REFRESH_ICON: string = "󰑐";
 
 export const QUERY_ICON: string = "󰆍";
 
 export const RUN_ICON: string = "󰐊";
 
 export const EDIT_ICON: string = "󰏫";
+
+export const COPY_ICON: string = "󰆏";
 
 export const DELETE_ICON: string = "󰆴";
 

@@ -1,10 +1,10 @@
 import * as core from "@opentui/core";
 import { closeAllTabs, closeTab } from "../lib/actions";
 import { theme } from "../lib/config";
-import { ADD_ICON, CLOSE_ICON, QUERY_ICON, TAB_WIDTH } from "../lib/consts";
+import { ADD_ICON, CLOSE_ICON, QUERY_ICON, TAB_MIN_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { confirmDiscard, confirmDiscardIf } from "../lib/editor";
-import { displayText, fitText } from "../lib/format";
+import { displayText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
@@ -19,10 +19,19 @@ interface Hit {
 	close: boolean;
 }
 
-// Each tab is " name…  󰅖 ": a space, the name, a gap, the icon and a space.
-const CLOSE_OFFSET: number = TAB_WIDTH - 2;
+// A visible tab, its label, where it starts in the bar and how wide it is.
+interface Placed {
+	tab: Tab;
+	label: string;
+	x: number;
+	width: number;
+}
 
-const NAME_WIDTH: number = TAB_WIDTH - 5;
+// Each tab is " name  󰅖 ": a space, the name, a gap, the icon and a space.
+const TAB_PADDING: number = 5;
+
+// The close icon's offset from the end of its tab.
+const CLOSE_FROM_END: number = 2;
 
 // The + after the last tab: a space, the icon and a space.
 const ADD_WIDTH: number = 3;
@@ -31,8 +40,25 @@ const SCROLL_LEFT: string = "‹";
 
 const SCROLL_RIGHT: string = "›";
 
+function labelOf(tab: Tab): string {
+	return displayText(
+		tab.kind === "query" ? `${QUERY_ICON} ${tabLabel(tab)}` : tabLabel(tab),
+	);
+}
+
+// A tab is as wide as its name, so names aren't cut, but no narrower than the
+// minimum.
+function widthOf(label: string): number {
+	return Math.max(TAB_MIN_WIDTH, Bun.stringWidth(label) + TAB_PADDING);
+}
+
 class TabBar extends core.Renderable {
 	private _tabs: readonly Tab[] = [];
+	// Each tab's label, made once, since a tab's never changes.
+	private _labels: string[] = [];
+	// Where each tab starts when the first is at 0, with one more for where
+	// the last ends, so a span of tabs, or a tab's width, is one subtraction.
+	private _starts: number[] = [0];
 	private _active: Tab | null = null;
 	private _first: number = 0;
 	private _hovered: Hit | null = null;
@@ -44,78 +70,131 @@ class TabBar extends core.Renderable {
 		this.registerStoreEvents();
 	}
 
-	// The + keeps its room, so it shows however many tabs are open.
-	private get slots(): number {
-		return Math.max(1, Math.floor((this.width - ADD_WIDTH) / TAB_WIDTH));
+	// Where the tabs end while they overflow, leaving the + its room.
+	private get limit(): number {
+		return this.width - ADD_WIDTH;
 	}
 
-	// One past the last visible tab.
-	private get end(): number {
-		return Math.min(this._tabs.length, this._first + this.slots);
+	// The width of the tabs from first up to end.
+	private span(first: number, end: number = this._tabs.length): number {
+		return (this._starts[end] ?? 0) - (this._starts[first] ?? 0);
 	}
 
-	// Where the + is drawn, right after the last visible tab.
+	// Overflowing tabs reach the + at the edge of the bar, and the last one is
+	// cut there.
+	private get overflows(): boolean {
+		return this.span(this._first) > this.limit;
+	}
+
+	// Where the + is drawn: right after the last tab, or at the edge.
 	private get addOffset(): number {
-		return (this.end - this._first) * TAB_WIDTH;
+		return Math.min(this.span(this._first), this.limit);
 	}
 
-	// Where the › arrow is drawn, over the last visible tab's outer padding.
+	// Where the › arrow is drawn, over the cut tab's end.
 	private get rightArrowOffset(): number {
-		return this.addOffset - 1;
+		return this.limit - 1;
 	}
 
-	protected override renderSelf(buffer: core.OptimizedBuffer): void {
-		const end: number = this.end;
+	// The first tab shown when scrolled all the way, the earliest from which
+	// the rest fit.
+	private get maxFirst(): number {
+		let first: number = this._tabs.length;
 
-		for (let index: number = this._first; index < end; index++) {
+		while (first > 0 && this.span(first - 1) <= this.limit) {
+			first--;
+		}
+
+		return Math.min(first, Math.max(0, this._tabs.length - 1));
+	}
+
+	// The tabs that start in the bar, the last of which may be cut.
+	private placedTabs(): Placed[] {
+		const placed: Placed[] = [];
+		let x: number = 0;
+
+		for (
+			let index: number = this._first;
+			index < this._tabs.length && x < this.limit;
+			index++
+		) {
 			const tab: Tab | undefined = this._tabs[index];
+			const width: number = this.span(index, index + 1);
 
 			if (tab !== undefined) {
-				this.drawTab(
-					buffer,
-					tab,
-					this.screenX + (index - this._first) * TAB_WIDTH,
-				);
+				placed.push({
+					tab: tab,
+					label: this._labels[index] ?? "",
+					x: x,
+					width: width,
+				});
 			}
+
+			x += width;
+		}
+
+		return placed;
+	}
+
+	// The tabs are clipped where the + starts, so a cut tab ends there, and the
+	// + to the bar, so neither draws over the row editor.
+	protected override renderSelf(buffer: core.OptimizedBuffer): void {
+		const placed: Placed[] = this.placedTabs();
+
+		buffer.pushScissorRect(
+			this.screenX,
+			this.screenY,
+			Math.max(0, this.overflows ? this.limit : this.width),
+			1,
+		);
+
+		for (const tab of placed) {
+			this.drawTab(buffer, tab);
 		}
 
 		if (this._first > 0) {
-			this.drawArrow(buffer, SCROLL_LEFT, 0, this._tabs[this._first]);
+			this.drawArrow(buffer, SCROLL_LEFT, 0, placed[0]?.tab);
 		}
 
-		if (end < this._tabs.length) {
+		if (this.overflows) {
 			this.drawArrow(
 				buffer,
 				SCROLL_RIGHT,
 				this.rightArrowOffset,
-				this._tabs[end - 1],
+				placed.at(-1)?.tab,
 			);
 		}
 
+		buffer.popScissorRect();
+		buffer.pushScissorRect(this.screenX, this.screenY, this.width, 1);
+
 		this.drawAdd(buffer);
+
+		buffer.popScissorRect();
 	}
 
-	private drawTab(buffer: core.OptimizedBuffer, tab: Tab, x: number): void {
+	private drawTab(
+		buffer: core.OptimizedBuffer,
+		{ tab, label, x, width }: Placed,
+	): void {
+		const left: number = this.screenX + x;
 		const active: boolean = tab === this._active;
 		const hovered: boolean = this._hovered?.tab === tab;
 		const closeHovered: boolean = hovered && this._hovered?.close === true;
-		const label: string = displayText(
-			tab.kind === "query" ? `${QUERY_ICON} ${tabLabel(tab)}` : tabLabel(tab),
-		);
 
 		if (active || hovered) {
 			buffer.fillRect(
-				x,
+				left,
 				this.screenY,
-				TAB_WIDTH,
+				width,
 				1,
 				active ? theme.active : theme.hover,
 			);
 		}
 
 		buffer.drawText(
-			fitText(label, NAME_WIDTH),
-			x + 1,
+			label,
+			left + 1,
 			this.screenY,
 			active ? theme.fg_inverse : theme.fg,
 			undefined,
@@ -123,7 +202,7 @@ class TabBar extends core.Renderable {
 		);
 		buffer.drawText(
 			CLOSE_ICON,
-			x + CLOSE_OFFSET,
+			left + width - CLOSE_FROM_END,
 			this.screenY,
 			closeHovered ? theme.danger : active ? theme.fg_inverse : theme.muted,
 		);
@@ -163,7 +242,7 @@ class TabBar extends core.Renderable {
 			return -1;
 		}
 
-		if (relative === this.rightArrowOffset && this.end < this._tabs.length) {
+		if (relative === this.rightArrowOffset && this.overflows) {
 			return 1;
 		}
 
@@ -181,22 +260,26 @@ class TabBar extends core.Renderable {
 			return { tab: null, close: false };
 		}
 
-		const slot: number = Math.floor(relative / TAB_WIDTH);
-		const tab: Tab | undefined =
-			relative >= 0 && slot < this.slots
-				? this._tabs[this._first + slot]
-				: undefined;
-
-		if (tab === undefined) {
+		// The cut end of the last tab is under the +.
+		if (relative < 0 || relative >= this.limit) {
 			return null;
 		}
 
-		const column: number = relative % TAB_WIDTH;
+		// Found without placing the tabs, since it runs on every mouse move.
+		for (let index: number = this._first; index < this._tabs.length; index++) {
+			const end: number = this.span(this._first, index + 1);
 
-		return {
-			tab: tab,
-			close: column >= CLOSE_OFFSET - 1 && column <= CLOSE_OFFSET + 1,
-		};
+			if (relative < end) {
+				const tab: Tab | undefined = this._tabs[index];
+				const close: number = end - CLOSE_FROM_END;
+
+				return tab === undefined
+					? null
+					: { tab: tab, close: relative >= close - 1 && relative <= close + 1 };
+			}
+		}
+
+		return null;
 	}
 
 	protected override onResize(width: number, height: number): void {
@@ -309,9 +392,7 @@ class TabBar extends core.Renderable {
 	}
 
 	private scrollTo(first: number): void {
-		const max: number = Math.max(0, this._tabs.length - this.slots);
-
-		this._first = clamp(first, 0, max);
+		this._first = clamp(first, 0, this.maxFirst);
 
 		this.updateHovered();
 		this.requestRender();
@@ -324,10 +405,12 @@ class TabBar extends core.Renderable {
 
 		let first: number = this._first;
 
-		if (index >= 0 && index < first) {
-			first = index;
-		} else if (index >= first + this.slots) {
-			first = index - this.slots + 1;
+		if (index >= 0) {
+			first = Math.min(first, index);
+
+			while (first < index && this.span(first, index + 1) > this.limit) {
+				first++;
+			}
 		}
 
 		this.scrollTo(first);
@@ -354,6 +437,12 @@ class TabBar extends core.Renderable {
 			this,
 			$tabs.subscribe((tabs: readonly Tab[]): void => {
 				this._tabs = tabs;
+				this._labels = tabs.map(labelOf);
+				this._starts = [0];
+
+				for (const label of this._labels) {
+					this._starts.push((this._starts.at(-1) ?? 0) + widthOf(label));
+				}
 
 				this.reveal();
 			}),

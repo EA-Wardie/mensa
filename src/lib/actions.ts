@@ -1,10 +1,12 @@
 import { Confirmation } from "../components/Confirmation";
+import { copyText } from "./clipboard";
 import type { ConnectionConfig } from "./config";
 import {
 	deleteRow,
 	dropAll,
 	dropTable,
 	type RowTarget,
+	refreshTables,
 	truncateAll,
 	truncateTable,
 } from "./database";
@@ -19,6 +21,7 @@ import {
 	$schema,
 	$tableData,
 	$tabs,
+	clearNotice,
 	type QueryTab,
 	type Tab,
 	type TableData,
@@ -31,8 +34,6 @@ interface Write {
 	discards: boolean;
 	heading: string;
 	description: string;
-	// Set for writes to every table, which ask a second time, deliberately.
-	warning?: string;
 	confirmLabel: string;
 	run: () => Promise<string | null>;
 	// Updates the store afterwards, even after an error, since MySQL may have
@@ -44,44 +45,52 @@ function isEditing(table: string): boolean {
 	return $editor.get()?.table === table;
 }
 
-// Asks, then writes. The update afterwards and the error only show while the
-// same connection is open.
+// Runs an action, which clears the last notice. The update afterwards and the
+// error only show while the same connection is open.
+async function report(
+	run: () => Promise<string | null>,
+	after?: () => void,
+): Promise<void> {
+	const connection: ConnectionConfig | null = $connection.get();
+
+	clearNotice();
+
+	const error: string | null = await run();
+
+	if ($connection.get() !== connection) {
+		return;
+	}
+
+	after?.();
+
+	if (error) {
+		$notice.set(error);
+	}
+}
+
+// Asks, then writes.
 function confirmWrite(write: Write): void {
-	const onConfirm: () => Promise<void> = async (): Promise<void> => {
-		const connection: ConnectionConfig | null = $connection.get();
-		const error: string | null = await write.run();
-
-		if ($connection.get() !== connection) {
-			return;
-		}
-
-		write.after?.();
-
-		if (error) {
-			$notice.set(error);
-		}
-	};
-	const { warning }: Write = write;
+	const onConfirm: () => Promise<void> = (): Promise<void> =>
+		report(write.run, write.after);
 
 	confirmDiscardIf(write.discards, (): void => {
 		Confirmation.make({
 			heading: write.heading,
 			description: write.description,
 			confirmLabel: write.confirmLabel,
-			onConfirm:
-				warning === undefined
-					? onConfirm
-					: (): void => {
-							Confirmation.make({
-								heading: "Are you sure?",
-								description: warning,
-								confirmLabel: write.confirmLabel,
-								deliberate: true,
-								onConfirm: onConfirm,
-							});
-						},
+			onConfirm: onConfirm,
 		});
 	});
+}
+
+// Copies the text, showing why it couldn't be.
+export function copyToClipboard(text: string): Promise<void> {
+	return report((): Promise<string | null> => copyText(text));
+}
+
+// Lists the tables again. Tables that are gone close their tabs.
+export function refreshSchema(): Promise<void> {
+	return report(refreshTables);
 }
 
 // Deletes a loaded row. Rows loaded since leave the row unmatched, which
@@ -132,8 +141,7 @@ export function truncateAllTables(): void {
 	confirmWrite({
 		discards: $editor.get() !== null,
 		heading: "Truncate all tables?",
-		description: `Every row in every table in ${schema} will be deleted.`,
-		warning: `This empties every table in ${schema} and can't be undone.`,
+		description: `Every row in every table in ${schema} will be deleted. This can't be undone.`,
 		confirmLabel: "Truncate all",
 		run: truncateAll,
 		after: reloadOpenTables,
@@ -146,8 +154,7 @@ export function dropAllTables(): void {
 	confirmWrite({
 		discards: $editor.get() !== null,
 		heading: "Drop all tables?",
-		description: `Every table and view in ${schema} will be dropped with all their rows.`,
-		warning: `This drops every table and view in ${schema} and can't be undone.`,
+		description: `Every table and view in ${schema} will be dropped with all their rows. This can't be undone.`,
 		confirmLabel: "Drop all",
 		run: dropAll,
 	});

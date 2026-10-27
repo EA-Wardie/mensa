@@ -1,6 +1,7 @@
 import { type ReservedSQL, SQL, type TransactionSQL } from "bun";
 import { type ConnectionConfig, type Driver, rowLimit } from "./config";
 import { CONNECTION_TIMEOUT, LONG_TEXT_LENGTH } from "./consts";
+import { errorMessage } from "./format";
 import { logError } from "./log";
 import {
 	$notice,
@@ -808,25 +809,12 @@ const DIALECTS: Record<Driver, Dialect> = {
 // query that finishes later can tell its session has ended.
 let client: Client | null = null;
 
-interface SortNotice {
-	table: string;
-	text: string;
-}
-
-// The notice a failed sort set, so the next load of that table can clear it
-// without clearing any other notice.
-let sortNotice: SortNotice | null = null;
-
 // Each table's latest load. A load whose token was replaced or removed drops
 // its result, such as one that started before the table was truncated.
 const loads: Map<string, object> = new Map<string, object>();
 
 // Each query tab's run, the same way.
 const runs: Map<string, object> = new Map<string, object>();
-
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
 
 // The drivers are named as Bun's adapters.
 function makeClient(connection: ConnectionConfig, max: number): SQL {
@@ -848,18 +836,6 @@ function makeClient(connection: ConnectionConfig, max: number): SQL {
 	}
 
 	return new SQL(options);
-}
-
-function clearSortNotice(table: string): void {
-	if (sortNotice?.table !== table) {
-		return;
-	}
-
-	if ($notice.get() === sortNotice.text) {
-		$notice.set("");
-	}
-
-	sortNotice = null;
 }
 
 // The columns are aliased, since MySQL names them in capitals. The row
@@ -1012,8 +988,6 @@ export async function loadTable(name: string): Promise<void> {
 
 	loads.set(name, token);
 
-	clearSortNotice(name);
-
 	// A new sort keeps showing the old rows until the sorted ones arrive.
 	if (previous?.status !== "loaded") {
 		setEntry($tableData, name, { status: "loading" });
@@ -1067,14 +1041,12 @@ export async function loadTable(name: string): Promise<void> {
 
 		// A failed sort keeps the rows and the sort they have.
 		if (data?.status === "loaded") {
-			const text: string = sort
-				? `Could not sort by ${sort.column}: ${errorMessage(error)}`
-				: `Could not reload ${name}: ${errorMessage(error)}`;
-
 			setEntry($sorts, name, data.sort ?? undefined);
-			$notice.set(text);
-
-			sortNotice = { table: name, text: text };
+			$notice.set(
+				sort
+					? `Could not sort by ${sort.column}: ${errorMessage(error)}`
+					: `Could not reload ${name}: ${errorMessage(error)}`,
+			);
 
 			return;
 		}
@@ -1652,11 +1624,13 @@ export async function dropAll(): Promise<string | null> {
 	return error;
 }
 
-export async function refreshTables(): Promise<void> {
+// Lists the tables again, resolving to the error, or null once listed or when
+// the connection closed meanwhile.
+export async function refreshTables(): Promise<string | null> {
 	const current: Client | null = client;
 
 	if (!current) {
-		return;
+		return null;
 	}
 
 	try {
@@ -1665,8 +1639,14 @@ export async function refreshTables(): Promise<void> {
 		if (client === current && !Bun.deepEquals(tables, $tables.get())) {
 			$tables.set(tables);
 		}
+
+		return null;
 	} catch (error) {
 		logError(error);
+
+		return client === current
+			? `Could not list tables: ${errorMessage(error)}`
+			: null;
 	}
 }
 
@@ -1701,7 +1681,6 @@ export async function closeClient(): Promise<void> {
 	const closing: Client | null = client;
 
 	client = null;
-	sortNotice = null;
 	loads.clear();
 	runs.clear();
 

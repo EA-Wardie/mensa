@@ -1,14 +1,16 @@
 import type * as core from "@opentui/core";
-import { deleteRowAt } from "../lib/actions";
+import { copyToClipboard, deleteRowAt } from "../lib/actions";
 import { DoubleClick } from "../lib/clicks";
 import { theme } from "../lib/config";
 import {
+	COPY_ICON,
 	DELETE_ICON,
 	EDIT_ICON,
 	SORT_ASC_ICON,
 	SORT_DESC_ICON,
 } from "../lib/consts";
 import { confirmDiscard, editRow } from "../lib/editor";
+import { rowAsCsv, rowAsJson } from "../lib/export";
 import { gridFor } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
@@ -22,6 +24,7 @@ import {
 	$tabs,
 	type Sort,
 	type TableData,
+	type Value,
 } from "../lib/store";
 import { selectRow, sortTable } from "../lib/tabs";
 import { GridView, type HeaderMarker, type Position } from "./GridView";
@@ -170,6 +173,8 @@ export class DataGrid extends GridView {
 			selectRow(row);
 		}
 
+		const values: Value[] = data.rows[row] ?? [];
+
 		Menu.make({
 			x: event.x,
 			y: event.y,
@@ -179,6 +184,18 @@ export class DataGrid extends GridView {
 					shortcut: shortcutLabel(SHORTCUTS.editRow),
 					onSelect: (): void => {
 						editRow(row, null);
+					},
+				},
+				{
+					label: `${COPY_ICON} Copy as CSV`,
+					onSelect: (): void => {
+						copyToClipboard(rowAsCsv(data.columns, values));
+					},
+				},
+				{
+					label: `${COPY_ICON} Copy as JSON`,
+					onSelect: (): void => {
+						copyToClipboard(rowAsJson(data.columns, data.kinds, values));
 					},
 				},
 				"divider",

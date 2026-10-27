@@ -14,6 +14,7 @@ import {
 	DATABASE_ICON,
 	DELETE_ICON,
 	QUERY_ICON,
+	REFRESH_ICON,
 	SIDEBAR_WIDTH,
 	SWITCH_ICON,
 	TRUNCATE_ICON,
@@ -33,6 +34,7 @@ import {
 	$tables,
 } from "../lib/store";
 import { newQuery, openTable } from "../lib/tabs";
+import { Divider } from "./Divider";
 import { IconButton } from "./IconButton";
 import { List } from "./List";
 import { Menu, type MenuItem } from "./Menu";
@@ -100,11 +102,13 @@ export class TableSidebar {
 			},
 		});
 
+		// The name leaves room for the sidebar's borders, the padding, a gap, the
+		// divider and the two buttons.
 		header.add(
 			new core.TextRenderable(ctx, {
 				content: fitText(
 					`${DATABASE_ICON} ${displayText($connection.get()?.name ?? "")}`,
-					SIDEBAR_WIDTH - 7,
+					SIDEBAR_WIDTH - 11,
 				),
 				fg: theme.fg,
 				attributes: core.TextAttributes.BOLD,
@@ -112,13 +116,25 @@ export class TableSidebar {
 			}),
 		);
 
-		header.add(
+		const buttons: core.BoxRenderable = new core.BoxRenderable(ctx, {
+			flexDirection: "row",
+			flexShrink: 0,
+		});
+
+		buttons.add(Divider.make({ vertical: true, joined: true }));
+		buttons.add(
+			IconButton.make({
+				icon: REFRESH_ICON,
+				onClick: SHORTCUTS.refreshSchema.run,
+			}),
+		);
+		buttons.add(
 			IconButton.make({
 				icon: CLOSE_ICON,
-				flexShrink: 0,
 				onClick: SHORTCUTS.disconnect.run,
 			}),
 		);
+		header.add(buttons);
 
 		this._component.add(header);
 	}

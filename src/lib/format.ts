@@ -80,6 +80,20 @@ export function displayText(text: string): string {
 		.replace(CONTROL_CHARACTERS, controlPicture);
 }
 
+export function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+export function isJson(text: string): boolean {
+	try {
+		JSON.parse(text);
+
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 // Re-indents JSON text without parsing it, so numbers like
 // 12345678901234567890 or 1.0 and the escapes in strings stay as they were.
 // An empty indent gives the compact form. The text should be valid JSON.

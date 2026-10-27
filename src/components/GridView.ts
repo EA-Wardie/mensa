@@ -1,6 +1,7 @@
 import * as core from "@opentui/core";
 import type { ColumnIcon } from "../lib/columnKinds";
 import { theme } from "../lib/config";
+import { BOTTOM_TEE, CROSS, SEPARATOR, TOP_TEE } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { displayText, fitText, NULL_TEXT } from "../lib/format";
 import {
@@ -28,15 +29,7 @@ export interface HeaderMarker {
 // The top rule, the column names and the rule under them.
 const HEADER_HEIGHT: number = 3;
 
-const SEPARATOR: string = "│";
-
 const RULE: string = "─";
-
-const TOP_TEE: string = "┬";
-
-const CROSS: string = "┼";
-
-const BOTTOM_TEE: string = "┴";
 
 const SCROLL_STEP_X: number = 4;
 

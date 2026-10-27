@@ -259,3 +259,8 @@ export const $editorDirty = nanostores.atom<boolean>(false);
 export const $dialogOpen = nanostores.atom<boolean>(false);
 
 export const $notice = nanostores.atom<string>("");
+
+// A notice stays until the next action, which clears it as it starts.
+export function clearNotice(): void {
+	$notice.set("");
+}

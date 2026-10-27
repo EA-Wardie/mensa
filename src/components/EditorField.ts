@@ -10,8 +10,14 @@ import {
 	TEXTAREA_MIN_ROWS,
 } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { errorMessage } from "../lib/database";
-import { displayText, fitText, NULL_TEXT, reformatJson } from "../lib/format";
+import {
+	displayText,
+	errorMessage,
+	fitText,
+	isJson,
+	NULL_TEXT,
+	reformatJson,
+} from "../lib/format";
 import { clamp } from "../lib/math";
 import { type ColumnMeta, moveSelection, type Value } from "../lib/store";
 import { List } from "./List";
@@ -64,13 +70,7 @@ const READ_ONLY_LENGTH: number = 500;
 const UNEDITABLE_CHARACTERS: RegExp = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/;
 
 function prettyJson(value: string): string {
-	try {
-		JSON.parse(value);
-
-		return reformatJson(value, "  ");
-	} catch {
-		return value;
-	}
+	return isJson(value) ? reformatJson(value, "  ") : value;
 }
 
 // The rows a text takes when wrapped to the field, counted only up to the

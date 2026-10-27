@@ -51,8 +51,19 @@ function measure(value: Value): Measured {
 	return { text: text, width: Bun.stringWidth(text) };
 }
 
-// Each text is measured once, both to size its column and to fit it.
+// Follows a NOT NULL column's name. A query's columns have no metadata.
+const NOT_NULL_MARK: string = "*";
+
+function notNullMark(meta: TableMeta | null, column: string): string {
+	return meta?.columns.get(column)?.nullable === false ? NOT_NULL_MARK : "";
+}
+
+// Each text is measured once, both to size its column and to fit it. A cut
+// name keeps its mark.
 function makeGrid({ columns, kinds, rows, meta }: GridSource): Grid {
+	const marks: string[] = columns.map((column: string): string =>
+		notNullMark(meta, column),
+	);
 	const header: Measured[] = columns.map(measure);
 	const measured: Measured[][] = rows.map((row: Value[]): Measured[] =>
 		row.map(measure),
@@ -64,15 +75,21 @@ function makeGrid({ columns, kinds, rows, meta }: GridSource): Grid {
 				measured.reduce(
 					(width: number, row: Measured[]): number =>
 						Math.max(width, row[index]?.width ?? 0),
-					column.width + HEADER_SPACE,
+					column.width + (marks[index]?.length ?? 0) + HEADER_SPACE,
 				),
 			),
 	);
 
 	return {
-		columns: header.map((column: Measured, index: number): string =>
-			fitText(column.text, (widths[index] ?? 0) - HEADER_SPACE, column.width),
-		),
+		columns: header.map((column: Measured, index: number): string => {
+			const mark: string = marks[index] ?? "";
+
+			return `${fitText(
+				column.text,
+				(widths[index] ?? 0) - HEADER_SPACE - mark.length,
+				column.width,
+			)}${mark}`;
+		}),
 		icons: columns.map(
 			(column: string, index: number): ColumnIcon =>
 				columnIcon(columnKind(meta, column, kinds[index] ?? "other")),
