@@ -22,6 +22,7 @@ import {
 	$editor,
 	$editorDirty,
 	$notice,
+	clearNotice,
 	type EditorTarget,
 	type LoadedTable,
 	type Value,
@@ -397,6 +398,7 @@ export class RowEditor {
 
 		this._saving = true;
 		this.showStatus("");
+		clearNotice();
 
 		const error: string | null = await updateRow(this._target, changes);
 

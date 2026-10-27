@@ -15,15 +15,16 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 ## Features
 
 - Postgres and MySQL connections defined in a user config file, listed on the start screen. A connection that fails is reported in the footer.
-- The tables and views in the `public` schema on Postgres, or the connection's database on MySQL, listed in a sidebar once connected.
-- Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that.
-- An icon before each column name. Primary key columns have a yellow key and foreign key columns a white one, in the text colour, and a column in both shows the primary key's. Other columns have a muted icon for their type: text, integer, decimal, boolean (also MySQL's `tinyint(1)`), date, time, timestamp, interval, JSON, UUID, enum, binary, array, spatial, network, XML, or a generic one for other types. A Postgres domain shows its base type's icon. The columns and keys are read again on every load, so changes made elsewhere show after a sort or reload.
+- The tables and views in the `public` schema on Postgres, or the connection's database on MySQL, listed in a sidebar once connected. The refresh button in the sidebar header, or `Ctrl+R`, lists them again, which closes the tabs of tables that are gone.
+- Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that. The refresh button at the left of the footer, or `R`, loads the active table again, or runs the active query again.
+- An icon before each column name. Primary key columns have a yellow key and foreign key columns a white one, in the text colour, and a column in both shows the primary key's. Other columns have a muted icon for their type: text, integer, decimal, boolean (also MySQL's `tinyint(1)`), date, time, timestamp, interval, JSON, UUID, enum, binary, array, spatial, network, XML, or a generic one for other types. A Postgres domain shows its base type's icon. A `*` after a table's column name marks it `NOT NULL`. The columns and keys are read again on every load, so changes made elsewhere show after a sort or reload.
 - Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. The database sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column the database can't sort, such as Postgres `json`, is reported in the footer and the rows stay as they were.
 - Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
 - Edit a row in a sidebar by double clicking one of its cells, or with `E` on the selected row. Every column has a field: an input, or a textarea for long and multi-line text, a list to pick from for booleans and enums, and a textarea with the value pretty printed for JSON, which must parse before it saves. A nullable column has a `NULL` toggle, so an empty text and the text `NULL` stay strings. Save writes only the columns that changed, matched by the primary key, and the grid shows the row as the database stored it. Rows of views and of tables without a primary key open read only. Generated columns are read only, as are MySQL binary, bit and spatial values. Editing on Postgres needs version 12 or later.
-- Delete a row, truncate or drop a table or view, and truncate or drop every table in the schema, from context menus. Each asks first, and the schema wide ones ask twice. Truncating restarts a Postgres table's identity columns, as MySQL does. Truncating or dropping one table that others reference fails with the database's error rather than emptying or changing them, while the schema wide ones handle the references between the schema's tables. On Postgres, a table or view outside the schema that depends on one inside it stops them, so nothing outside the schema changes. Rows of views and of tables without a primary key can't be deleted.
+- Delete a row, truncate or drop a table or view, and truncate or drop every table in the schema, from context menus. Each asks first. Truncating restarts a Postgres table's identity columns, as MySQL does. Truncating or dropping one table that others reference fails with the database's error rather than emptying or changing them, while the schema wide ones handle the references between the schema's tables. On Postgres, a table or view outside the schema that depends on one inside it stops them, so nothing outside the schema changes. Rows of views and of tables without a primary key can't be deleted.
 - Switch to another connection from the database name's menu.
-- Several tables open at once, as tabs with a close button. The sidebar selects the active tab's table. Each tab remembers its scroll position, and each connection remembers its open tabs.
+- Errors are shown in the footer until the next action, such as switching tabs, sorting, refreshing, running a query or saving a row.
+- Several tables open at once, as tabs with a close button. A tab is as wide as its name, with a minimum width, so names aren't cut. Tabs that don't all fit reach the `+` at the edge of the bar, with the last one cut there. The sidebar selects the active tab's table. Each tab remembers its scroll position, and each connection remembers its open tabs.
 - Query tabs, opened with the `+` after the last tab, `N`, or New query in the database name's menu. Each has a SQL editor over a grid of the results, and a Run button. A run can hold several statements separated by `;`, and the grid shows the last one that returned rows, with every value as the database formats it as text, as in table tabs. MySQL bit and spatial values, and binary values that aren't text, are shown as hex. Only the first `row_limit` rows are shown, and the footer says how many there were. A statement that returns no rows shows its kind and, for writes, the rows it changed. A query's rows are read only.
 - A failed run shows the database's error in place of the rows. On Postgres it also gives the line and column and moves the cursor there. The error is muted once the SQL changes. After a run with a statement that returned no rows, such as `CREATE TABLE`, the sidebar lists the tables again, and after a statement that may have written the open tables reload when shown.
 - Query tabs share one connection of their own, so a transaction or a `SET` lasts from one run to the next, in any query tab, and table tabs don't see it. Closing the connection rolls back a transaction left open. Each connection remembers its query tabs and their SQL, but not their results. Closing a query tab with SQL in it asks first.
@@ -49,6 +50,8 @@ This version can edit and delete existing rows in the grid. Other changes, such 
 | `Escape` | Tables | Clear the selected row |
 | `E` | Tables | Edit the selected row, or the query's SQL in a query tab |
 | `N` | Tables | Open a new query tab |
+| `R` | Tables | Load the active table again, or run the active query again |
+| `Ctrl+R` | Tables | List the tables again |
 | `Tab`, `Shift+Tab` | Editor | Next and previous field |
 | `Up` / `K`, `Down` / `J` | Editor | Pick from a boolean or enum list |
 | `Ctrl+N` | Editor | Toggle the field's `NULL` |
@@ -58,7 +61,7 @@ This version can edit and delete existing rows in the grid. Other changes, such 
 | `Escape` | Query | Leave the SQL, so the other keys work again |
 | `C` | Tables | Close the connection, after confirming |
 | `Q` | Everywhere | Quit, after confirming |
-| `Return`, `Escape` | Confirmation | Confirm or cancel. The second confirmation for truncating or dropping every table needs a click instead of `Return`. |
+| `Return`, `Escape` | Confirmation | Confirm or cancel. |
 | `Escape` | Menu | Close the menu |
 
 Mouse controls:
@@ -70,9 +73,10 @@ Mouse controls:
 - Double click a cell to edit its row, with that column's field focused. Click a field to focus it, and a field's `NULL` to toggle it. While the editor is open, other keys are paused and clicking a row doesn't change the selection. Sorting, switching or closing the tab, or opening another table asks first when the row has unsaved changes.
 - Click a column header to sort by it. Each click moves it from no sort to ascending, then descending, then back to no sort. Sorting another column replaces the current sort.
 - The mouse wheel scrolls the lists and the grid's rows. Shift with the wheel, or a horizontal wheel, scrolls the grid's columns. You can also drag the scrollbars.
-- The close button in the sidebar header closes the connection.
+- The close button in the sidebar header closes the connection, and the refresh button beside it lists the tables again.
+- The buttons at the left of the footer act on the active tab: refresh loads the table again, or runs the query again, truncate empties the table, after confirming, and close closes the tab. The buttons are shown only while a tab is open, and truncate only for a table tab.
 - Right click to open a menu, and click an item to choose it. Clicking outside the menu or `Escape` closes it, and other keys are paused while it's open.
-  - A row: Edit opens it in the editor, and Delete deletes it. Right clicking selects the row, unless the editor is open.
+  - A row: Edit opens it in the editor, and Delete deletes it. Copy as CSV copies the column names and the row as two CSV lines, with NULL as an empty field. Copy as JSON copies the row as one object keyed by column name, with numbers, booleans and JSON values typed, NULL as `null`, and anything else as a string. Numbers keep the database's digits. Copying uses the system clipboard, or the terminal's (OSC 52) where there is none. Right clicking selects the row, unless the editor is open.
   - A tab: Close closes the active tab, and Close all closes every tab. Right clicking a tab switches to it first.
   - A table in the sidebar: Truncate deletes all its rows, and Delete drops it, or the view.
   - The database name in the sidebar header: New query opens a query tab. Switch lists the other connections to switch to. Truncate all empties every table, and Drop all drops every table and view.

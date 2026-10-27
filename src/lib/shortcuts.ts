@@ -2,12 +2,13 @@ import type * as core from "@opentui/core";
 import { Confirmation } from "../components/Confirmation";
 import { GridView } from "../components/GridView";
 import { QueryView } from "../components/QueryView";
-import { closeTab } from "./actions";
+import { closeTab, refreshSchema } from "./actions";
+import { disposeClipboard } from "./clipboard";
 import type { ConnectionConfig } from "./config";
 import { QUIT_TIMEOUT } from "./consts";
 import { ctx } from "./context";
 import { closeClient } from "./database";
-import { editRow } from "./editor";
+import { confirmDiscard, editRow } from "./editor";
 import { connect, disconnect } from "./session";
 import { flushState } from "./state";
 import {
@@ -22,7 +23,13 @@ import {
 	moveSelection,
 	type Screen,
 } from "./store";
-import { cycleTab, newQuery, openTable, runActiveQuery } from "./tabs";
+import {
+	cycleTab,
+	newQuery,
+	openTable,
+	refreshActiveTab,
+	runActiveQuery,
+} from "./tabs";
 
 type Run = () => void;
 
@@ -39,7 +46,7 @@ interface Shortcut {
 // closed without resetting the UI, which would build the start screen first.
 function quit(): void {
 	Promise.race([
-		Promise.all([closeClient(), flushState()]),
+		Promise.all([closeClient(), flushState(), disposeClipboard()]),
 		Bun.sleep(QUIT_TIMEOUT),
 	]).finally((): void => {
 		ctx.destroy();
@@ -156,6 +163,23 @@ export const SHORTCUTS = {
 		screen: "database",
 		run: (): void => {
 			newQuery();
+		},
+	},
+	// Reloading replaces the rows, which closes the row editor.
+	refresh: {
+		key: "r",
+		description: "Reload the active table, or run the active query again",
+		screen: "database",
+		run: (): void => {
+			confirmDiscard(refreshActiveTab);
+		},
+	},
+	refreshSchema: {
+		key: "ctrl+r",
+		description: "List the tables again",
+		screen: "database",
+		run: (): void => {
+			refreshSchema();
 		},
 	},
 	pageUp: {
