@@ -14,27 +14,27 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 
 ## Features
 
-- Postgres and MySQL connections defined in a user config file, listed on the start screen. A connection that fails is reported in the footer.
-- The tables and views in the `public` schema on Postgres, or the connection's database on MySQL, listed in a sidebar once connected. The refresh button in the sidebar header, or `Ctrl+R`, lists them again, which closes the tabs of tables that are gone.
-- Table data in a scrollable grid, with the first `row_limit` rows (1000 by default) of each table. The footer shows the row and column count, and `(first 1000)` when the table has more rows than that. The refresh button at the left of the footer, or `R`, loads the active table again, or runs the active query again.
-- An icon before each column name. Primary key columns have a yellow key and foreign key columns a white one, in the text colour, and a column in both shows the primary key's. Other columns have a muted icon for their type: text, integer, decimal, boolean (also MySQL's `tinyint(1)`), date, time, timestamp, interval, JSON, UUID, enum, binary, array, spatial, network, XML, or a generic one for other types. A Postgres domain shows its base type's icon. A `*` after a table's column name marks it `NOT NULL`. The columns and keys are read again on every load, so changes made elsewhere show after a sort or reload.
-- Sort a table by one column at a time, ascending or descending, with a chevron in the sorted column's header. The chevron is muted while the sorted rows load. The database sorts the whole table by the column's type before the row limit applies, so the grid shows the true first rows. A column the database can't sort, such as Postgres `json`, is reported in the footer and the rows stay as they were.
-- Select a row in the grid by clicking it. Each tab keeps its selected row until its rows reload, such as after a sort.
-- Edit a row in a sidebar by double clicking one of its cells, or with `E` on the selected row. Every column has a field: an input, or a textarea for long and multi-line text, a list to pick from for booleans and enums, and a textarea with the value pretty printed for JSON, which must parse before it saves. A nullable column has a `NULL` toggle, so an empty text and the text `NULL` stay strings. Save writes only the columns that changed, matched by the primary key, and the grid shows the row as the database stored it. Rows of views and of tables without a primary key open read only. Generated columns are read only, as are MySQL binary, bit and spatial values. Editing on Postgres needs version 12 or later.
-- Delete a row, truncate or drop a table or view, and truncate or drop every table in the schema, from context menus. Each asks first. Truncating restarts a Postgres table's identity columns, as MySQL does. Truncating or dropping one table that others reference fails with the database's error rather than emptying or changing them, while the schema wide ones handle the references between the schema's tables. On Postgres, a table or view outside the schema that depends on one inside it stops them, so nothing outside the schema changes. Rows of views and of tables without a primary key can't be deleted.
-- Switch to another connection from the database name's menu.
-- Errors are shown in the footer until the next action, such as switching tabs, sorting, refreshing, running a query or saving a row.
-- Several tables open at once, as tabs with a close button. A tab is as wide as its name, with a minimum width, so names aren't cut. Tabs that don't all fit reach the `+` at the edge of the bar, with the last one cut there. The sidebar selects the active tab's table. Each tab remembers its scroll position, and each connection remembers its open tabs.
-- Query tabs, opened with the `+` after the last tab, `N`, or New query in the database name's menu. Each has a SQL editor over a grid of the results, and a Run button. A run can hold several statements separated by `;`, and the grid shows the last one that returned rows, with every value as the database formats it as text, as in table tabs. MySQL bit and spatial values, and binary values that aren't text, are shown as hex. Only the first `row_limit` rows are shown, and the footer says how many there were. A statement that returns no rows shows its kind and, for writes, the rows it changed. A query's rows are read only.
-- A failed run shows the database's error in place of the rows. On Postgres it also gives the line and column and moves the cursor there. The error is muted once the SQL changes. After a run with a statement that returned no rows, such as `CREATE TABLE`, the sidebar lists the tables again, and after a statement that may have written the open tables reload when shown.
-- Query tabs share one connection of their own, so a transaction or a `SET` lasts from one run to the next, in any query tab, and table tabs don't see it. Closing the connection rolls back a transaction left open. Each connection remembers its query tabs and their SQL, but not their results. Closing a query tab with SQL in it asks first.
-- Values shown as the database formats them as text, so a date has no time and a Postgres `timestamptz` is in the session's time zone. MySQL binary and blob values are shown as hex, such as `0x00FF`, bits in binary, such as `101`, and spatial values as text, such as `POINT(1 2)`. `NULL` is shown in muted italics. Newlines, tabs and other control characters in values and names are shown as symbols.
-- mensa reopens the last connection on start. Closing it with `C` makes the next start show the list instead.
+- Postgres and MySQL connections from a config file, listed on the start screen. Failed connections are reported in the footer.
+- A sidebar with the tables and views in Postgres's `public` schema, or the MySQL connection's database. Its refresh button, or `Ctrl+R`, lists them again and closes the tabs of tables that are gone.
+- Table data in a scrollable grid, up to `row_limit` rows (1000 by default). The footer shows the row and column count, and `(first 1000)` when there are more. The refresh button at the left of the footer, or `R`, reloads the active table or reruns the active query.
+- An icon before each column name: a yellow key for primary keys, a white key for foreign keys (primary wins when a column is both), and otherwise a muted icon for the type. Types: text, integer, decimal, boolean (and MySQL's `tinyint(1)`), date, time, timestamp, interval, JSON, UUID, enum, binary, array, spatial, network, XML, or a generic icon. Postgres domains use their base type's icon. A `*` after the name marks a `NOT NULL` column. Columns and keys are read on every load, so outside schema changes show after a sort or reload.
+- Sort by one column at a time, ascending or descending, shown by a chevron in the header (muted while loading). The database sorts the whole table before the row limit applies, so you see the true first rows. A column that can't be sorted, such as Postgres `json`, is reported in the footer and the rows stay as they were.
+- Click a row to select it. Each tab keeps its selection until its rows reload.
+- Edit a row in a sidebar by double clicking a cell, or with `E` on the selected row. Fields are inputs, textareas for long or multi-line text, lists for booleans and enums, and pretty printed textareas for JSON, which must parse to save. Nullable columns have a `NULL` toggle, so empty text and the text `NULL` stay strings. Saving writes only the changed columns, matched by primary key, and the grid shows the row as stored. Views and tables without a primary key open read only, as do generated columns and MySQL binary, bit and spatial values. Editing on Postgres needs version 12 or later.
+- Delete a row, truncate or drop a table or view, or truncate or drop every table in the schema, from context menus, each after confirming. Truncating restarts Postgres identity columns, as MySQL does. Truncating or dropping a table that others reference fails with the database's error, while the schema wide actions handle references between the schema's tables. On Postgres, a dependent table or view outside the schema stops them, so nothing outside it changes. Rows of views and of tables without a primary key can't be deleted.
+- Switch connections from the database name's menu.
+- Errors stay in the footer until the next action, such as switching tabs, sorting, refreshing, running a query or saving.
+- Tabs for several open tables, each as wide as its name (with a minimum) and with a close button. When they overflow, they reach the `+` at the edge and the last is cut there. The sidebar follows the active tab. Each tab keeps its scroll position, and each connection remembers its open tabs.
+- Query tabs, opened with the `+` after the tabs, `N`, or New query in the database name's menu. Each has a SQL editor, a Run button and a results grid. A run may hold several `;` separated statements, and the grid shows the last one that returned rows, as text like table tabs, up to `row_limit` rows, with the full count in the footer. MySQL bit and spatial values, and binary values that aren't text, are shown as hex. A statement without rows shows its kind and, for writes, the rows changed. Results are read only.
+- A failed run shows the database's error in place of the rows. On Postgres it also gives the line and column and moves the cursor there. The error is muted once the SQL changes. After a statement without rows, such as `CREATE TABLE`, the sidebar lists the tables again, and after a possible write the open tables reload when shown.
+- Query tabs share their own connection, so a transaction or `SET` lasts across runs and tabs without reaching table tabs. Closing the connection rolls back an open transaction. Each connection remembers its query tabs and their SQL, but not results. Closing a query tab with SQL asks first.
+- Values appear as the database formats them as text, so a date has no time and a Postgres `timestamptz` is in the session's time zone. MySQL binary and blob values are shown as hex (`0x00FF`), bits in binary (`101`) and spatial values as text (`POINT(1 2)`). `NULL` is muted italics. Control characters in values and names are shown as symbols.
+- The last connection reopens on start. Closing it with `C` shows the list on the next start instead.
 - Closing the connection returns to the start screen.
-- A themeable UI, configurable through a user config file.
+- A themeable UI, set in the config file.
 - First party mouse support.
 
-This version can edit and delete existing rows in the grid. Other changes, such as inserting rows, are made with a query.
+Existing rows can be edited and deleted in the grid. Other changes, such as inserts, are made with a query.
 
 ## Controls
 
@@ -48,54 +48,56 @@ This version can edit and delete existing rows in the grid. Other changes, such 
 | `PageUp`, `PageDown`, `Home`, `End` | Tables | Scroll the rows |
 | `Left` / `H`, `Right` / `L` | Tables | Scroll the columns |
 | `Escape` | Tables | Clear the selected row |
-| `E` | Tables | Edit the selected row, or the query's SQL in a query tab |
+| `E` | Tables | Edit the selected row, or the SQL in a query tab |
 | `N` | Tables | Open a new query tab |
-| `R` | Tables | Load the active table again, or run the active query again |
+| `R` | Tables | Reload the active table, or rerun the active query |
 | `Ctrl+R` | Tables | List the tables again |
 | `Tab`, `Shift+Tab` | Editor | Next and previous field |
 | `Up` / `K`, `Down` / `J` | Editor | Pick from a boolean or enum list |
 | `Ctrl+N` | Editor | Toggle the field's `NULL` |
 | `Ctrl+S` | Editor | Save the changed columns |
-| `Escape` | Editor | Close, asking first when there are unsaved changes |
-| `Ctrl+Return`, `Alt+Return` | Query | Run the SQL. `Ctrl+Return` works outside the editor too. Terminals without the kitty keyboard protocol send `Ctrl+Return` as `Return`, so use `Alt+Return` in the editor there. |
+| `Escape` | Editor | Close, asking first if there are unsaved changes |
+| `Ctrl+Return`, `Alt+Return` | Query | Run the SQL. `Ctrl+Return` also works outside the editor. Terminals without the kitty keyboard protocol send `Ctrl+Return` as `Return`, so use `Alt+Return` there. |
 | `Escape` | Query | Leave the SQL, so the other keys work again |
 | `C` | Tables | Close the connection, after confirming |
 | `Q` | Everywhere | Quit, after confirming |
-| `Return`, `Escape` | Confirmation | Confirm or cancel. |
+| `Return`, `Escape` | Confirmation | Confirm or cancel |
 | `Escape` | Menu | Close the menu |
 
 Mouse controls:
 
 - Double click a connection to connect, or a table to open it.
-- Click a tab to switch to it. Click its close button or middle click it to close it. The wheel scrolls the tabs when they don't all fit. Click the `+` after the tabs to open a query tab.
+- Click a tab to switch to it, and its close button or a middle click to close it. The wheel scrolls tabs that don't fit. The `+` after the tabs opens a query tab.
 - In a query tab, click the SQL to edit it and Run to run it. Click a result row to select it.
 - Click a row to select it. `Escape` clears the selection.
-- Double click a cell to edit its row, with that column's field focused. Click a field to focus it, and a field's `NULL` to toggle it. While the editor is open, other keys are paused and clicking a row doesn't change the selection. Sorting, switching or closing the tab, or opening another table asks first when the row has unsaved changes.
-- Click a column header to sort by it. Each click moves it from no sort to ascending, then descending, then back to no sort. Sorting another column replaces the current sort.
-- The mouse wheel scrolls the lists and the grid's rows. Shift with the wheel, or a horizontal wheel, scrolls the grid's columns. You can also drag the scrollbars.
-- The close button in the sidebar header closes the connection, and the refresh button beside it lists the tables again.
-- The buttons at the left of the footer act on the active tab: refresh loads the table again, or runs the query again, truncate empties the table, after confirming, and close closes the tab. The buttons are shown only while a tab is open, and truncate only for a table tab.
-- Right click to open a menu, and click an item to choose it. Clicking outside the menu or `Escape` closes it, and other keys are paused while it's open.
-  - A row: Edit opens it in the editor, and Delete deletes it. Copy as CSV copies the column names and the row as two CSV lines, with NULL as an empty field. Copy as JSON copies the row as one object keyed by column name, with numbers, booleans and JSON values typed, NULL as `null`, and anything else as a string. Numbers keep the database's digits. Copying uses the system clipboard, or the terminal's (OSC 52) where there is none. Right clicking selects the row, unless the editor is open.
+- Double click a cell to edit its row, with that column's field focused. Click a field to focus it, or its `NULL` to toggle it. While the editor is open, other keys are paused and clicks don't change the selection. Sorting, switching or closing the tab, or opening another table asks first if the row has unsaved changes.
+- Click a column header to cycle its sort: ascending, descending, none. Sorting another column replaces the current sort.
+- The wheel scrolls the lists and the grid's rows, and Shift with the wheel, or a horizontal wheel, scrolls the columns. Scrollbars can be dragged.
+- The sidebar header's close button closes the connection, and its refresh button lists the tables again.
+- The footer's buttons act on the active tab: refresh reloads the table or reruns the query, truncate empties the table after confirming, and close closes the tab. They show only while a tab is open, and truncate only for a table tab.
+- Right click for a menu. Clicking outside it or `Escape` closes it, and other keys are paused while it's open.
+  - A row: Edit opens it in the editor, and Delete deletes it. Copy as CSV copies the column names and the row as two lines, with NULL as an empty field. Copy as JSON copies one object keyed by column name, with numbers, booleans and JSON values typed, NULL as `null` and the rest as strings. Numbers keep the database's digits. Copies go to the system clipboard, or the terminal's (OSC 52) without one. Right clicking selects the row, unless the editor is open.
   - A tab: Close closes the active tab, and Close all closes every tab. Right clicking a tab switches to it first.
-  - A table in the sidebar: Truncate deletes all its rows, and Delete drops it, or the view.
-  - The database name in the sidebar header: New query opens a query tab. Switch lists the other connections to switch to. Truncate all empties every table, and Drop all drops every table and view.
+  - A table in the sidebar: Truncate deletes all its rows, and Delete drops the table or view.
+  - The database name in the sidebar header: New query opens a query tab, Switch lists the other connections, Truncate all empties every table, and Drop all drops every table and view.
 
 ## Installation
 
-Runs on Linux and macOS, on x86_64 and arm64. Building requires [Bun](https://bun.com) 1.4.4 or later, which reports a query's columns.
+Released for Linux on x86_64 and macOS on Apple silicon. Building needs [Bun](https://bun.com) 1.4.4 or later.
 
 ```bash
 bun install --os="*" --cpu="*"
 bun run build
-bun run install:app
+bun run install:linux # or install:macos
 ```
 
-`bun install --os="*" --cpu="*"` installs OpenTUI's native library for every platform, since the build compiles a binary for each one: `dist/mensa-linux-x64`, `mensa-linux-arm64`, `mensa-darwin-x64` and `mensa-darwin-arm64`.
+`bun install --os="*" --cpu="*"` installs OpenTUI's native library for every platform, since the build compiles both `dist/mensa-linux-x64` and `dist/mensa-darwin-arm64`. It also wraps `mensa-darwin-arm64` in `dist/Mensa.app`.
 
-`bun run archive` then packs `dist/mensa-darwin-arm64` and `dist/mensa-linux-x64`, each with the install script and the icon, into `dist/Release-darwin-arm64 <version>.tar.xz` and `dist/Release-linux-x64 <version>.tar.xz` for a release. Extract one and run `install.sh` from it.
+`install:linux` installs the binary to `~/.local/bin/mensa` and adds a desktop entry to `~/.local/share/applications`.
 
-The install script picks the binary for your system and installs it to `~/.local/bin/mensa`. On Linux it also adds a desktop entry to `~/.local/share/applications`. On macOS it removes the quarantine attribute, so a downloaded binary can run.
+`install:macos` installs `Mensa.app` to `~/Applications`, where Spotlight finds it, and links `~/.local/bin/mensa` to its binary. It removes the quarantine attribute and signs the binary ad hoc, so a downloaded copy runs. Opening the app runs mensa in Terminal, or the terminal set by `terminal` in the config.
+
+`bun run archive` packs the releases, each with its install script as `install.sh`: `dist/Release-linux-x64 <version>.tar.xz` with the binary and icon, and `dist/Release-darwin-arm64 <version>.zip` with `Mensa.app`. It needs `zip` installed. Extract one and run `install.sh`.
 
 ## Development
 
@@ -105,7 +107,7 @@ bun run dev
 
 ## Configuration
 
-mensa reads `~/.config/mensa/config.toml`. Every option is optional. Invalid entries are logged and skipped. Connection names must be unique, so a later connection with a name that is already taken is skipped.
+mensa reads `~/.config/mensa/config.toml`. Every option is optional. Invalid entries are logged and skipped, as is a connection whose name is already taken.
 
 ```toml
 # Rows loaded per table.
@@ -117,12 +119,16 @@ double_click_timeout = 250
 # Where error logs are written, one JSONL file per day.
 logs_path = "~/.local/state/mensa/logs"
 
+# macOS only: the terminal Mensa.app opens in. Terminal by default.
+# Also iTerm, Ghostty, kitty, WezTerm or Alacritty. Must come before the first [table].
+terminal = "Terminal"
+
 # A connection takes a url…
 [[connections]]
 name = "Local"
 url = "postgres://user:password@localhost:5432/app"
 
-# …or separate fields. port defaults to 5432 for Postgres and 3306 for MySQL, must be at most 65535, and overrides the port in a url when set.
+# …or separate fields. port defaults to 5432 for Postgres and 3306 for MySQL, goes up to 65535, and overrides a url's port.
 [[connections]]
 name = "Staging"
 host = "db.example.com"
@@ -132,8 +138,8 @@ password = "secret"
 database = "app"
 ssl = "require" # disable, allow, prefer, require, verify-ca or verify-full
 
-# driver is postgres or mysql. It defaults to postgres, or mysql for a mysql://, mysql2:// or mariadb:// url.
-# MySQL needs a database, in the url or as database. ssl defaults to prefer, unless the url sets ssl or sslmode,
+# driver is postgres (the default) or mysql, which a mysql://, mysql2:// or mariadb:// url implies.
+# MySQL needs a database. Its ssl defaults to prefer unless the url sets ssl or sslmode,
 # since MySQL 8 refuses a password over an unencrypted connection by default.
 [[connections]]
 name = "Shop"
@@ -143,7 +149,7 @@ user = "root"
 password = "secret"
 database = "shop"
 # Only for a trusted local server without TLS: lets mensa fetch the server's key to send the password,
-# which someone on the network could replace with their own to read the password. Defaults to false.
+# which someone on the network could replace to read it. Defaults to false.
 # allow_public_key_retrieval = true
 
 [theme]
@@ -157,9 +163,9 @@ accent = "#0369a1"
 # surface defaults to an opaque bg
 ```
 
-Passwords are stored in plain text in the config file, so keep it readable only by you (`chmod 600`).
+Passwords are stored in plain text, so keep the config readable only by you (`chmod 600`).
 
-The last connection, and the open tabs of each connection, are remembered by name in `~/.local/state/mensa/state.json`. Credentials are never written there.
+The last connection and each connection's open tabs are remembered by name in `~/.local/state/mensa/state.json`. Credentials are never written there.
 
 ## License
 

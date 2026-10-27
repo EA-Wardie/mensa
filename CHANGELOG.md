@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.8
+
+### Added
+
+- `Mensa.app` for macOS, installed to `~/Applications` so Spotlight finds it. Opening it runs mensa in Terminal, or the terminal set by the new `terminal` config option (iTerm, Ghostty, kitty, WezTerm or Alacritty). `~/.local/bin/mensa` links to its binary.
+- `bun run install:linux` and `bun run install:macos`, replacing `install:app`.
+
+### Changed
+
+- Releases are Linux on x86_64, as a `tar.xz`, and macOS on Apple silicon, as a `zip` holding `Mensa.app`. Each has its own `install.sh`. The build compiles only these two binaries.
+- The macOS install removes the quarantine attribute, signs the binary ad hoc, and keeps the old app if the new one can't be moved into place.
+- The README is shorter.
+
+### Internal
+
+- The install scripts are `scripts/linstall.sh` and `scripts/minstall.sh`, archived as `install.sh`. `scripts/launcher.sh` is the app's executable, and opens the `Mensa` binary beside it in a terminal.
+- `src/build.ts` builds `dist/Mensa.app` with `Info.plist` from `assets/Info.plist`, filled with the version and a build number of major × 100 + minor × 10 + patch. `src/archive.ts` stages each release so its script can be renamed, and needs `zip`.
+
 ## 0.2.7
 
 ### Added

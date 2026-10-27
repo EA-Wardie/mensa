@@ -1,12 +1,13 @@
 # mensa
 
-Terminal database client for Postgres and MySQL, built with `@opentui/core` and `nanostores` on Bun. Linux and macOS. The README documents every feature, key and config option.
+Terminal database client for Postgres and MySQL, built with `@opentui/core` and `nanostores` on Bun. Released for Linux x64 and macOS arm64. The README documents every feature, key and config option.
 
 ## Commands
 
 - `bun run dev` runs the app with watch mode.
-- `bun run build` compiles a binary per target in `TARGETS` to `dist/mensa-<os>-<arch>` and copies `install.sh` and the icon beside them. It needs `bun install --os="*" --cpu="*"`, so OpenTUI's native package for each target is installed. `install.sh` picks the binary from `uname`.
-- `bun run archive` packs the built `darwin-arm64` and `linux-x64` binaries, each with `install.sh` and the icon, into `dist/Release-<platform> <version>.tar.xz`. It needs `bun run build` first.
+- `bun run build` compiles a binary per target in `TARGETS`, the released `linux-x64` and `darwin-arm64`, to `dist/mensa-<os>-<arch>`, and copies `scripts/linstall.sh`, `scripts/minstall.sh` and the icon beside them. It needs `bun install --os="*" --cpu="*"`, so OpenTUI's native package for each target is installed. `buildMacApp` wraps `mensa-darwin-arm64` in `dist/Mensa.app`: the binary as `Contents/MacOS/Mensa`, `scripts/launcher.sh` as `Contents/MacOS/launcher` (the bundle's executable, since an app opened from Spotlight has no terminal: it opens the binary in Terminal or the config's `terminal`, read with `sed`, which the app ignores), `assets/icon.icns`, and `assets/Info.plist` filled with the version and a build number of major × 100 + minor × 10 + patch.
+- `bun run install:linux` runs `dist/linstall.sh`, which installs the Linux x64 binary to `~/.local/bin` with a desktop entry. `bun run install:macos` runs `dist/minstall.sh`, which copies `Mensa.app` to `~/Applications`, removes the quarantine attribute, signs the binary ad hoc, swaps it in (moving the old bundle aside, and back if the move fails), registers it with Launch Services and links `~/.local/bin/mensa` to it. It checks for Apple silicon with `sysctl hw.optional.arm64`, since `uname -m` reports x86_64 under Rosetta. It runs on macOS's bash 3.2, as does the launcher.
+- `bun run archive` stages each release in `RELEASES` with its install script renamed to `install.sh`: `linux-x64` as a `tar.xz` with the binary and icon, and `darwin-arm64` as a `zip` with `Mensa.app`, into `dist/Release-<platform> <version>.<ext>`. It needs `bun run build` first, and `zip`.
 - `bun run format` runs Biome. Run `bunx tsc --noEmit` and `bunx biome check src/` before finishing a change. There are no tests.
 
 ## Architecture
