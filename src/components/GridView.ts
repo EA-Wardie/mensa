@@ -520,7 +520,7 @@ export abstract class GridView extends core.Renderable {
 		switch (event.type) {
 			case "down":
 				if (own) {
-					this.releaseScrollBars();
+					this.releaseScrollBars(event);
 				}
 
 				if (event.button === core.MouseButton.LEFT) {
@@ -534,7 +534,7 @@ export abstract class GridView extends core.Renderable {
 			case "up":
 			case "drag-end":
 				if (own) {
-					this.releaseScrollBars();
+					this.releaseScrollBars(event);
 				}
 				break;
 			case "scroll":
@@ -556,9 +556,9 @@ export abstract class GridView extends core.Renderable {
 		}
 	}
 
-	private releaseScrollBars(): void {
-		this._horizontal.release();
-		this._vertical.release();
+	private releaseScrollBars(event: core.MouseEvent): void {
+		this._horizontal.release(event.x, event.y);
+		this._vertical.release(event.x, event.y);
 	}
 
 	private trackHover(event: core.MouseEvent): void {
@@ -661,19 +661,31 @@ export abstract class GridView extends core.Renderable {
 		this._horizontal.scrollSize = grid?.totalWidth ?? 0;
 		this._horizontal.viewportSize = this.viewWidth;
 
-		this.scrollTo(this._offset);
+		this.scrollTo(this._offset, false);
 	}
 
-	private scrollTo(position: Position): void {
+	// A scroll that moves marks the moved scrollbars as in use for a moment,
+	// unless it only keeps the offset in range.
+	private scrollTo(position: Position, reveal: boolean = true): void {
 		const rows: number = this._grid?.cells.length ?? 0;
 		const width: number = this._grid?.totalWidth ?? 0;
 		const maxY: number = Math.max(0, rows - this.bodyHeight);
 		const maxX: number = Math.max(0, width - this.viewWidth);
 
-		this._offset = {
+		const offset: Position = {
 			x: clamp(position.x, 0, maxX),
 			y: clamp(position.y, 0, maxY),
 		};
+
+		if (reveal && offset.y !== this._offset.y) {
+			this._vertical.flash();
+		}
+
+		if (reveal && offset.x !== this._offset.x) {
+			this._horizontal.flash();
+		}
+
+		this._offset = offset;
 		this._vertical.scrollPosition = this._offset.y;
 		this._horizontal.scrollPosition = this._offset.x;
 

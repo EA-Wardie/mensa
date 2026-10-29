@@ -4,7 +4,7 @@
 
 ### Added
 
-- A `scrollbar` theme colour for the grid's scrollbar thumbs, which defaults to `accent`, so they stand out from the borders they run along.
+- A `scrollbar` theme colour for the grid's scrollbar thumbs, which defaults to `fg`.
 - A read only row view in a sidebar, opened by double clicking a row, with `V`, or with View in the row's menu, for table and query rows. It shows every value in full, wrapped with its newlines, and pretty prints and highlights JSON with OpenTUI's tree-sitter highlighting. It follows the selection while it's open, with a click or `Up`/`Down`, and `Escape` closes it.
 - A Copy button beside each value in the view, which copies it as the database gave it and shows Copied for a moment.
 - Edit in the view's footer and View in the editor's switch between them, asking first when the edited row has unsaved changes.
@@ -15,7 +15,8 @@
 ### Changed
 
 - The sidebar header's refresh and close buttons are replaced by a menu button, which opens the database name's menu. The menu now also has Refresh (`Ctrl+R`) and Close (`C`). Right clicking the name still opens it.
-- The grid is always closed off by a bottom border, which is also the footer's top border, joined to the columns. The horizontal scrollbar runs along it as a heavier line, and the vertical one along the right border, so neither takes a row or column of its own.
+- The grid is always closed off by a bottom border, which is also the footer's top border, joined to the columns. The horizontal scrollbar runs along it, and the vertical one along the right border, so neither takes a row or column of its own. Their thumbs tint the border in the `scrollbar` colour, keeping its line and joins visible: faintly, and more strongly while the mouse is over a scrollbar, while one is dragged and for a second after a scroll.
+- The footer's buttons have no divider after them, so the rule above the footer is the grid's alone, joined to every column.
 - Scrolled all the way right, the last column's separator is the right border, with no blank column after it.
 - Double clicking a row views it instead of editing it. In the editor, a double click on its row still focuses the column.
 - A row's menu reads Copy row as CSV and Copy row as JSON, split from Edit by a divider.
@@ -27,7 +28,7 @@
 
 ### Internal
 
-- `HorizontalScrollBar` is now `RuleScrollBar`, for either orientation. It draws only its thumb, as `━` or `┃`, in a post-process pass after the frame, so it stays one solid line over the joins and the footer's divider, and `GridView` uses it for both scrollbars. The vertical one sits on the parent's right border, at `right: -1`.
+- `HorizontalScrollBar` is now `RuleScrollBar`, for either orientation. It draws only its thumb, in a post-process pass after the frame, as a `fillRect` of `theme.scrollbar` at `THUMB_IDLE_ALPHA`, or `THUMB_ACTIVE_ALPHA` while it's hovered, dragged or `flash`ed by a scroll for `THUMB_TIMEOUT`. Neither is opaque, so the fill keeps the cells' glyphs. `GridView` uses it for both scrollbars, and scrolls without flashing when it only keeps the offset in range. The vertical one sits on the parent's right border, at `right: -1`.
 - `GridView` draws the footer's top border as its last row, and `┤` where its rules meet the right border. The footer has only a bottom border, and a query's error keeps a bottom border in place of the grid.
 - `lib/viewer.ts` holds the view's `$viewer` target, `lib/syntax.ts` the highlighting styles, and `fieldHeading` in `EditorField.ts` the label both sidebars share. `GridView.stepSelection` moves a grid's selection for the view.
 - `refreshTable` in `lib/tabs.ts` shows a table and reloads it if it was open.

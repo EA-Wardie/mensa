@@ -16,7 +16,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 
 - Postgres and MySQL connections from a config file, listed on the start screen. Failed connections are reported in the footer.
 - A sidebar with the tables and views in Postgres's `public` schema, or the MySQL connection's database. Refresh in the database name's menu, or `Ctrl+R`, lists them again and closes the tabs of tables that are gone.
-- Table data in a scrollable grid, up to `row_limit` rows (1000 by default), closed off by a bottom border. The scrollbars run along the grid's bottom and right borders. The footer shows the row and column count, and `(first 1000)` when there are more. The refresh button at the left of the footer, or `R`, reloads the active table or reruns the active query.
+- Table data in a scrollable grid, up to `row_limit` rows (1000 by default), closed off by a bottom border. The scrollbars run along the grid's bottom and right borders, with faint thumbs that tint the border without hiding it, and grow stronger while the mouse is over one, while one is dragged and for a moment after a scroll. The footer shows the row and column count, and `(first 1000)` when there are more. The refresh button at the left of the footer, or `R`, reloads the active table or reruns the active query.
 - An icon before each column name: a yellow key for primary keys, a white key for foreign keys (primary wins when a column is both), and otherwise a muted icon for the type. Types: text, integer, decimal, boolean (and MySQL's `tinyint(1)`), date, time, timestamp, interval, JSON, UUID, enum, binary, array, spatial, network, XML, or a generic icon. Postgres domains use their base type's icon. A `*` after the name marks a `NOT NULL` column. Columns and keys are read on every load, so outside schema changes show after a sort or reload.
 - Sort by one column at a time, ascending or descending, shown by a chevron in the header (muted while loading). The database sorts the whole table before the row limit applies, so you see the true first rows. A column that can't be sorted, such as Postgres `json`, is reported in the footer and the rows stay as they were.
 - Click a row to select it. Each tab keeps its selection until its rows reload.
@@ -165,7 +165,7 @@ danger = "#dc2626"
 warning = "#eab308"  # the primary key icon, #a16207 by default on a light bg
 accent = "#0369a1"
 # surface defaults to an opaque bg
-# scrollbar, the grid's scrollbar thumbs, defaults to accent
+# scrollbar, the grid's scrollbar thumbs, blended faintly over the borders, defaults to fg
 
 # JSON in the row view. These are the defaults on a dark bg, and
 # #0A3069, #0550AE and #CF222E on a light one (or a dark fg with a transparent bg).

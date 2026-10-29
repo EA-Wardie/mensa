@@ -440,7 +440,7 @@ function parseThemeColor(key: string, value: unknown): RGBA | undefined {
 	return undefined;
 }
 
-function withAlpha(color: RGBA, alpha: number): RGBA {
+export function withAlpha(color: RGBA, alpha: number): RGBA {
 	return RGBA.fromValues(color.r, color.g, color.b, alpha);
 }
 
@@ -540,7 +540,7 @@ function makeTheme(config: unknown): ThemeType {
 		transparent: TRANSPARENT,
 		scrollbar_thumb: withAlpha(fg, 0.5),
 		scrollbar_track: TRANSPARENT,
-		scrollbar: colors.scrollbar ?? accent,
+		scrollbar: colors.scrollbar ?? fg,
 		accent,
 		success,
 		success_pressed: withAlpha(success, 0.75),

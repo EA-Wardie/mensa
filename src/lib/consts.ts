@@ -70,10 +70,14 @@ export const BOTTOM_TEE: string = "┴";
 
 export const RIGHT_TEE: string = "┤";
 
-// A scrollbar's thumb, drawn heavier over the rule it runs along.
-export const THUMB_X: string = "━";
+// How strongly a scrollbar's thumb tints the rule it runs along, while it
+// isn't in use and while it is.
+export const THUMB_IDLE_ALPHA: number = 0.2;
 
-export const THUMB_Y: string = "┃";
+export const THUMB_ACTIVE_ALPHA: number = 0.5;
+
+// How long a scrollbar's thumb stays in use after a scroll, in milliseconds.
+export const THUMB_TIMEOUT: number = 1000;
 
 export const CLOSE_ICON: string = "󰅖";
 
