@@ -4,6 +4,7 @@ import {
 	$editor,
 	$editorDirty,
 	$tableData,
+	$viewer,
 	type EditorTarget,
 	type LoadedTable,
 	type TableData,
@@ -42,6 +43,7 @@ export function editRow(row: number, column: string | null): void {
 
 	confirmDiscard((): void => {
 		selectRow(row, table);
+		$viewer.set(null);
 		$editor.set(target);
 	});
 }

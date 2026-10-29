@@ -5,6 +5,7 @@ import { DataGrid } from "./DataGrid";
 import { Flex } from "./Flex";
 import { QueryView } from "./QueryView";
 import { RowEditor } from "./RowEditor";
+import { RowViewer } from "./RowViewer";
 import { TableSidebar } from "./TableSidebar";
 import { TableTabs } from "./TableTabs";
 
@@ -34,6 +35,8 @@ export class DatabaseScreen {
 				],
 			}),
 		);
+		// Only one of them holds a sidebar at a time.
+		this._component.add(RowViewer.host());
 		this._component.add(RowEditor.host());
 	}
 

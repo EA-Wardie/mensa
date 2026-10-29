@@ -56,7 +56,7 @@ interface ChoiceOption {
 }
 
 // The editor's border, the scrollbar and the content's padding.
-const FIELD_WIDTH: number = EDITOR_WIDTH - 4;
+export const FIELD_WIDTH: number = EDITOR_WIDTH - 4;
 
 const NULL_TOGGLE: string = " NULL ";
 
@@ -87,6 +87,57 @@ function wrappedRows(text: string): number {
 	}
 
 	return rows;
+}
+
+interface HeadingOptions {
+	column: string;
+	// The type as the database names it, or empty for none.
+	typeLabel: string;
+	isKey: boolean;
+	// The room for the name and the type.
+	width: number;
+}
+
+export interface FieldHeading {
+	root: core.BoxRenderable;
+	name: core.TextRenderable;
+}
+
+// A field's name in bold, after a key icon for a primary key column, and its
+// type in muted text when there's room.
+export function fieldHeading({
+	column,
+	typeLabel,
+	isKey,
+	width,
+}: HeadingOptions): FieldHeading {
+	const key: string = isKey ? `${KEY_ICON} ` : "";
+	const fitted: string = fitText(key + displayText(column), width);
+	const typeWidth: number = width - Bun.stringWidth(fitted) - 1;
+	const root: core.BoxRenderable = new core.BoxRenderable(ctx, {
+		flexDirection: "row",
+		columnGap: 1,
+	});
+	const name: core.TextRenderable = new core.TextRenderable(ctx, {
+		content: fitted,
+		fg: theme.fg,
+		attributes: core.TextAttributes.BOLD,
+		selectable: false,
+	});
+
+	root.add(name);
+
+	if (typeLabel && typeWidth > 0) {
+		root.add(
+			new core.TextRenderable(ctx, {
+				content: fitText(displayText(typeLabel), typeWidth),
+				fg: theme.muted,
+				selectable: false,
+			}),
+		);
+	}
+
+	return { root: root, name: name };
 }
 
 // The label row and error line every field has, around its control.
@@ -120,40 +171,15 @@ abstract class BaseField implements Field {
 			},
 		});
 
-		const type: string = options.meta?.typeLabel ?? "";
-		const key: string = options.isKey ? `${KEY_ICON} ` : "";
-		const name: string = fitText(
-			key + displayText(options.column),
-			FIELD_WIDTH - NULL_TOGGLE.length - 1,
-		);
-		const typeWidth: number =
-			FIELD_WIDTH - Bun.stringWidth(name) - NULL_TOGGLE.length - 2;
-
-		this._name = new core.TextRenderable(ctx, {
-			content: name,
-			fg: theme.fg,
-			attributes: core.TextAttributes.BOLD,
-			selectable: false,
+		const heading: FieldHeading = fieldHeading({
+			column: options.column,
+			typeLabel: options.meta?.typeLabel ?? "",
+			isKey: options.isKey,
+			width: FIELD_WIDTH - NULL_TOGGLE.length - 1,
 		});
 
-		const heading: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			flexDirection: "row",
-			columnGap: 1,
-		});
-
-		heading.add(this._name);
-
-		if (type && typeWidth > 0) {
-			heading.add(
-				new core.TextRenderable(ctx, {
-					content: fitText(displayText(type), typeWidth),
-					fg: theme.muted,
-					selectable: false,
-				}),
-			);
-		}
-
-		this._label.add(heading);
+		this._name = heading.name;
+		this._label.add(heading.root);
 
 		this._error = new core.TextRenderable(ctx, {
 			content: "",

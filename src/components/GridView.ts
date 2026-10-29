@@ -101,6 +101,8 @@ export abstract class GridView extends core.Renderable {
 
 	public abstract clearSelection(): void;
 
+	protected abstract selectRowAt(row: number): void;
+
 	protected messageColor(): core.RGBA {
 		return theme.muted;
 	}
@@ -168,6 +170,30 @@ export abstract class GridView extends core.Renderable {
 			x: this._offset.x,
 			y: end ? Number.MAX_SAFE_INTEGER : 0,
 		});
+	}
+
+	// Moves the selection by step, from the top when there is none, and scrolls
+	// it into view. Gives the row it lands on, or null with no rows.
+	public stepSelection(step: number): number | null {
+		const count: number = this._grid?.cells.length ?? 0;
+		const selected: number | null = this.selectedRow();
+
+		if (!count) {
+			return null;
+		}
+
+		const row: number =
+			selected === null ? 0 : clamp(selected + step, 0, count - 1);
+		const top: number = this._offset.y;
+		const height: number = Math.max(1, this.bodyHeight);
+
+		this.selectRowAt(row);
+		this.scrollTo({
+			x: this._offset.x,
+			y: row < top ? row : row >= top + height ? row - height + 1 : top,
+		});
+
+		return row;
 	}
 
 	public scrollColumns(direction: number): void {

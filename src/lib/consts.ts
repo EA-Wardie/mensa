@@ -49,6 +49,9 @@ export const TEXTAREA_MAX_ROWS: number = 10;
 
 export const CHOICE_MAX_ROWS: number = 6;
 
+// The row view shows this much of a value, so a huge one doesn't stall it.
+export const VIEW_MAX_LENGTH: number = 100_000;
+
 // varchar columns longer than this are edited in a textarea.
 export const LONG_TEXT_LENGTH: number = 255;
 
@@ -83,6 +86,8 @@ export const QUERY_ICON: string = "󰆍";
 export const RUN_ICON: string = "󰐊";
 
 export const EDIT_ICON: string = "󰏫";
+
+export const VIEW_ICON: string = "󰈈";
 
 export const COPY_ICON: string = "󰆏";
 

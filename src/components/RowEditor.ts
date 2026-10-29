@@ -6,6 +6,7 @@ import {
 	EDIT_ICON,
 	EDITOR_WIDTH,
 	SAVE_ICON,
+	VIEW_ICON,
 } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { type RowChange, updateRow } from "../lib/database";
@@ -27,6 +28,7 @@ import {
 	type LoadedTable,
 	type Value,
 } from "../lib/store";
+import { viewRow } from "../lib/viewer";
 import { Button } from "./Button";
 import { type Field, makeField } from "./EditorField";
 import { IconButton } from "./IconButton";
@@ -227,12 +229,21 @@ export class RowEditor {
 			border: ["top", "bottom"],
 			borderColor: theme.border,
 			flexDirection: "row",
-			justifyContent: "flex-end",
 			columnGap: 1,
 			flexShrink: 0,
 			paddingX: 1,
 		});
 
+		// Viewing the row asks first when it has unsaved changes.
+		footer.add(
+			Button.make({
+				label: `${VIEW_ICON} View`,
+				onClick: (): void => {
+					viewRow(this._target.row, this._lastFocused?.column ?? null);
+				},
+			}),
+		);
+		footer.add(new core.BoxRenderable(ctx, { flexGrow: 1 }));
 		footer.add(
 			Button.make({
 				label: `${CANCEL_ICON} ${this._readOnly === null ? "Cancel" : "Close"}`,

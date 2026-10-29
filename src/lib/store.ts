@@ -253,6 +253,20 @@ export function moveSelection<T>(
 
 export const $editor = nanostores.atom<EditorTarget | null>(null);
 
+// The row the view shows, of a table or a query's results. tab is the tab it
+// was opened from, compared by reference, and rows the loaded array row
+// indexes into, so new rows show the row is gone.
+export interface ViewerTarget {
+	tab: Tab;
+	rows: Value[][];
+	row: number;
+	// The column to scroll to, or null for the top.
+	column: string | null;
+}
+
+// Set only while the editor is closed.
+export const $viewer = nanostores.atom<ViewerTarget | null>(null);
+
 // Whether the open editor has unsaved changes.
 export const $editorDirty = nanostores.atom<boolean>(false);
 

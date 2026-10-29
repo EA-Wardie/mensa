@@ -8,6 +8,7 @@ import {
 	EDIT_ICON,
 	SORT_ASC_ICON,
 	SORT_DESC_ICON,
+	VIEW_ICON,
 } from "../lib/consts";
 import { confirmDiscard, editRow } from "../lib/editor";
 import { rowAsCsv, rowAsJson } from "../lib/export";
@@ -22,11 +23,13 @@ import {
 	$sorts,
 	$tableData,
 	$tabs,
+	$viewer,
 	type Sort,
 	type TableData,
 	type Value,
 } from "../lib/store";
 import { selectRow, sortTable } from "../lib/tabs";
+import { viewRow } from "../lib/viewer";
 import { GridView, type HeaderMarker, type Position } from "./GridView";
 import { Menu } from "./Menu";
 
@@ -125,6 +128,10 @@ export class DataGrid extends GridView {
 		selectRow(null);
 	}
 
+	protected override selectRowAt(row: number): void {
+		selectRow(row);
+	}
+
 	// Clicking a column name cycles its sort, which reloads the rows and so
 	// closes the row editor.
 	protected override onHeaderClick(index: number): void {
@@ -137,8 +144,9 @@ export class DataGrid extends GridView {
 		}
 	}
 
-	// Clicking a row selects it, and double clicking a cell edits its row. While
-	// the editor is open, the selection stays on its row.
+	// Clicking a row selects it, and double clicking a cell views its row. While
+	// the view is open, it follows the clicked row. While the editor is open, the
+	// selection stays on its row, and a double click moves the editor's focus.
 	protected override onRowClick(
 		row: number | null,
 		column: number | null,
@@ -149,12 +157,17 @@ export class DataGrid extends GridView {
 			return;
 		}
 
-		if (this._clicks.click({ row: row, column: column })) {
-			editRow(
-				row,
-				column === null ? null : (this.columnNames()[column] ?? null),
-			);
-		} else if ($editor.get() === null) {
+		const name: string | null =
+			column === null ? null : (this.columnNames()[column] ?? null);
+		const double: boolean = this._clicks.click({ row: row, column: column });
+
+		if ($editor.get() !== null) {
+			if (double) {
+				editRow(row, name);
+			}
+		} else if (double || $viewer.get() !== null) {
+			viewRow(row, name);
+		} else {
 			selectRow(row);
 		}
 	}
@@ -179,6 +192,13 @@ export class DataGrid extends GridView {
 			x: event.x,
 			y: event.y,
 			items: [
+				{
+					label: `${VIEW_ICON} View`,
+					shortcut: shortcutLabel(SHORTCUTS.viewRow),
+					onSelect: (): void => {
+						viewRow(row, null);
+					},
+				},
 				{
 					label: `${EDIT_ICON} Edit`,
 					shortcut: shortcutLabel(SHORTCUTS.editRow),
