@@ -12,6 +12,7 @@
 - The sidebar header's refresh and close buttons are replaced by a menu button, which opens the database name's menu. The menu now also has Refresh (`Ctrl+R`) and Close (`C`). Right clicking the name still opens it.
 - The grid is always closed off by a bottom border, which is also the footer's top border, joined to the columns. The horizontal scrollbar runs along it as a heavier line, and the vertical one along the right border, so neither takes a row or column of its own.
 - Scrolled all the way right, the last column's separator is the right border, with no blank column after it.
+- A row's menu reads Copy row as CSV and Copy row as JSON, split from Edit by a divider.
 - Tabs scroll by cells, so scrolled to the end the last tab meets the `+` with no gap, and the first one shown may be cut at the left. The wheel and the arrows step a tab at a time. Clicking the active tab while it's cut brings it into view.
 
 ### Fixed

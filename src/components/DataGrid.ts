@@ -186,14 +186,15 @@ export class DataGrid extends GridView {
 						editRow(row, null);
 					},
 				},
+				"divider",
 				{
-					label: `${COPY_ICON} Copy as CSV`,
+					label: `${COPY_ICON} Copy row as CSV`,
 					onSelect: (): void => {
 						copyToClipboard(rowAsCsv(data.columns, values));
 					},
 				},
 				{
-					label: `${COPY_ICON} Copy as JSON`,
+					label: `${COPY_ICON} Copy row as JSON`,
 					onSelect: (): void => {
 						copyToClipboard(rowAsJson(data.columns, data.kinds, values));
 					},
