@@ -20,11 +20,12 @@ const THEME_KEYS = [
 	"warning",
 	"accent",
 	"surface",
+	"scrollbar",
 ] as const;
 
 type ThemeKey = (typeof THEME_KEYS)[number];
 
-type BaseColorKey = Exclude<ThemeKey, "surface">;
+type BaseColorKey = Exclude<ThemeKey, "surface" | "scrollbar">;
 
 export interface ThemeType {
 	bg: RGBA;
@@ -42,6 +43,9 @@ export interface ThemeType {
 	transparent: RGBA;
 	scrollbar_thumb: RGBA;
 	scrollbar_track: RGBA;
+	// The grid's thumbs, drawn as a line over its borders, so they stand out
+	// from them.
+	scrollbar: RGBA;
 	accent: RGBA;
 	success: RGBA;
 	success_pressed: RGBA;
@@ -480,6 +484,7 @@ function makeTheme(config: unknown): ThemeType {
 	const fg: RGBA = color("fg");
 	const success: RGBA = color("success");
 	const danger: RGBA = color("danger");
+	const accent: RGBA = color("accent");
 	const transparent: boolean = bg.a === 0;
 	const dark: boolean = transparent ? isLight(fg) : !isLight(bg);
 	const fallback: RGBA = dark ? BLACK : WHITE;
@@ -501,7 +506,8 @@ function makeTheme(config: unknown): ThemeType {
 		transparent: TRANSPARENT,
 		scrollbar_thumb: withAlpha(fg, 0.5),
 		scrollbar_track: TRANSPARENT,
-		accent: color("accent"),
+		scrollbar: colors.scrollbar ?? accent,
+		accent,
 		success,
 		success_pressed: withAlpha(success, 0.75),
 		danger,

@@ -13,6 +13,7 @@ import {
 	CLOSE_ICON,
 	DATABASE_ICON,
 	DELETE_ICON,
+	MENU_ICON,
 	QUERY_ICON,
 	REFRESH_ICON,
 	SIDEBAR_WIDTH,
@@ -33,7 +34,7 @@ import {
 	$selectedTable,
 	$tables,
 } from "../lib/store";
-import { newQuery, openTable } from "../lib/tabs";
+import { newQuery, openTable, refreshTable } from "../lib/tabs";
 import { Divider } from "./Divider";
 import { IconButton } from "./IconButton";
 import { List } from "./List";
@@ -103,12 +104,12 @@ export class TableSidebar {
 		});
 
 		// The name leaves room for the sidebar's borders, the padding, a gap, the
-		// divider and the two buttons.
+		// divider and the menu button.
 		header.add(
 			new core.TextRenderable(ctx, {
 				content: fitText(
 					`${DATABASE_ICON} ${displayText($connection.get()?.name ?? "")}`,
-					SIDEBAR_WIDTH - 11,
+					SIDEBAR_WIDTH - 8,
 				),
 				fg: theme.fg,
 				attributes: core.TextAttributes.BOLD,
@@ -120,20 +121,16 @@ export class TableSidebar {
 			flexDirection: "row",
 			flexShrink: 0,
 		});
+		// The menu opens under the button.
+		const menu: core.BoxRenderable = IconButton.make({
+			icon: MENU_ICON,
+			onClick: (): void => {
+				this.showConnectionMenu(menu.screenX, menu.screenY);
+			},
+		});
 
 		buttons.add(Divider.make({ vertical: true, joined: true }));
-		buttons.add(
-			IconButton.make({
-				icon: REFRESH_ICON,
-				onClick: SHORTCUTS.refreshSchema.run,
-			}),
-		);
-		buttons.add(
-			IconButton.make({
-				icon: CLOSE_ICON,
-				onClick: SHORTCUTS.disconnect.run,
-			}),
-		);
+		buttons.add(menu);
 		header.add(buttons);
 
 		this._component.add(header);
@@ -189,6 +186,15 @@ export class TableSidebar {
 			x: x,
 			y: y,
 			items: [
+				// Reloading the table, or leaving the edited row for it, replaces
+				// the row.
+				{
+					label: `${REFRESH_ICON} Refresh`,
+					onSelect: (): void => {
+						confirmDiscard((): void => refreshTable(table));
+					},
+				},
+				"divider",
 				{
 					label: `${TRUNCATE_ICON} Truncate`,
 					danger: true,
@@ -226,6 +232,11 @@ export class TableSidebar {
 						confirmDiscard(newQuery);
 					},
 				},
+				{
+					label: `${REFRESH_ICON} Refresh`,
+					shortcut: shortcutLabel(SHORTCUTS.refreshSchema),
+					onSelect: SHORTCUTS.refreshSchema.run,
+				},
 				"divider",
 				...(others.length
 					? [
@@ -236,9 +247,14 @@ export class TableSidebar {
 									this.showConnectionsMenu(others, x, y);
 								},
 							},
-							"divider" as const,
 						]
 					: []),
+				{
+					label: `${CLOSE_ICON} Close`,
+					shortcut: shortcutLabel(SHORTCUTS.disconnect),
+					onSelect: SHORTCUTS.disconnect.run,
+				},
+				"divider",
 				{
 					label: `${TRUNCATE_ICON} Truncate all`,
 					danger: true,

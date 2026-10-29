@@ -126,7 +126,9 @@ export class QueryView {
 		this._error = new core.BoxRenderable(ctx, {
 			width: "100%",
 			flexGrow: 1,
-			border: ["top"],
+			// The bottom border is the footer's top one, which the grid draws in
+			// its place.
+			border: ["top", "bottom"],
 			borderColor: theme.border,
 			paddingX: 1,
 			visible: false,

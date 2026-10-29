@@ -65,6 +65,13 @@ export const CROSS: string = "┼";
 
 export const BOTTOM_TEE: string = "┴";
 
+export const RIGHT_TEE: string = "┤";
+
+// A scrollbar's thumb, drawn heavier over the rule it runs along.
+export const THUMB_X: string = "━";
+
+export const THUMB_Y: string = "┃";
+
 export const CLOSE_ICON: string = "󰅖";
 
 export const ADD_ICON: string = "󰐕";
@@ -84,6 +91,8 @@ export const DELETE_ICON: string = "󰆴";
 export const TRUNCATE_ICON: string = "󰃢";
 
 export const SWITCH_ICON: string = "󰓡";
+
+export const MENU_ICON: string = "󰍜";
 
 export const KEY_ICON: string = "󰌋";
 

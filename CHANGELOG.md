@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.9
+
+### Added
+
+- A `scrollbar` theme colour for the grid's scrollbar thumbs, which defaults to `accent`, so they stand out from the borders they run along.
+- Refresh in a table's menu in the sidebar opens the table, or loads its rows again if it's open, asking first when the edited row has unsaved changes.
+
+### Changed
+
+- The sidebar header's refresh and close buttons are replaced by a menu button, which opens the database name's menu. The menu now also has Refresh (`Ctrl+R`) and Close (`C`). Right clicking the name still opens it.
+- The grid is always closed off by a bottom border, which is also the footer's top border, joined to the columns. The horizontal scrollbar runs along it as a heavier line, and the vertical one along the right border, so neither takes a row or column of its own.
+- Scrolled all the way right, the last column's separator is the right border, with no blank column after it.
+- Tabs scroll by cells, so scrolled to the end the last tab meets the `+` with no gap, and the first one shown may be cut at the left. The wheel and the arrows step a tab at a time. Clicking the active tab while it's cut brings it into view.
+
+### Fixed
+
+- In a full grid, the column separators ended without a border above the footer or the horizontal scrollbar.
+
+### Internal
+
+- `HorizontalScrollBar` is now `RuleScrollBar`, for either orientation. It draws only its thumb, as `━` or `┃`, in a post-process pass after the frame, so it stays one solid line over the joins and the footer's divider, and `GridView` uses it for both scrollbars. The vertical one sits on the parent's right border, at `right: -1`.
+- `GridView` draws the footer's top border as its last row, and `┤` where its rules meet the right border. The footer has only a bottom border, and a query's error keeps a bottom border in place of the grid.
+- `refreshTable` in `lib/tabs.ts` shows a table and reloads it if it was open.
+
 ## 0.2.8
 
 ### Added

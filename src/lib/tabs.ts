@@ -219,6 +219,18 @@ export function reloadTable(name: string): void {
 	}
 }
 
+// Shows a table, loading its rows again if it was already open. A new tab
+// loads when it is shown.
+export function refreshTable(name: string): void {
+	const open: boolean = $openTables.get().includes(name);
+
+	openTable(name);
+
+	if (open) {
+		reloadTable(name);
+	}
+}
+
 // Loads the active table again, or runs the active query again.
 export function refreshActiveTab(): void {
 	const tab: Tab | null = $activeTab.get();
