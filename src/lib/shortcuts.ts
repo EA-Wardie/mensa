@@ -20,6 +20,7 @@ import {
 	$selectedConnection,
 	$selectedTable,
 	$tables,
+	$viewer,
 	moveSelection,
 	type Screen,
 } from "./store";
@@ -30,6 +31,7 @@ import {
 	refreshActiveTab,
 	runActiveQuery,
 } from "./tabs";
+import { closeViewer, viewRow } from "./viewer";
 
 type Run = () => void;
 
@@ -52,6 +54,22 @@ function quit(): void {
 		ctx.destroy();
 		process.exit(0);
 	});
+}
+
+// Views the shown grid's next row while a row is viewed, which selects it, and
+// otherwise moves the sidebar's table.
+function stepRowOrTable(step: number): void {
+	if ($viewer.get() === null) {
+		moveSelection($tables, $selectedTable, step);
+
+		return;
+	}
+
+	const row: number | null = GridView.current?.stepRow(step) ?? null;
+
+	if (row !== null) {
+		viewRow(row, null);
+	}
 }
 
 // Acts on the shown grid: the table's, or the query's results.
@@ -98,19 +116,19 @@ export const SHORTCUTS = {
 	tableUp: {
 		key: "up",
 		alias: "k",
-		description: "Select the table above",
+		description: "Select the table above, or the row above while viewing one",
 		screen: "database",
 		run: (): void => {
-			moveSelection($tables, $selectedTable, -1);
+			stepRowOrTable(-1);
 		},
 	},
 	tableDown: {
 		key: "down",
 		alias: "j",
-		description: "Select the table below",
+		description: "Select the table below, or the row below while viewing one",
 		screen: "database",
 		run: (): void => {
-			moveSelection($tables, $selectedTable, 1);
+			stepRowOrTable(1);
 		},
 	},
 	openTable: {
@@ -238,11 +256,29 @@ export const SHORTCUTS = {
 			}
 		},
 	},
+	viewRow: {
+		key: "v",
+		description: "View the selected row",
+		screen: "database",
+		run: (): void => {
+			const row: number | null = GridView.current?.selectedRow() ?? null;
+
+			if (row !== null) {
+				viewRow(row, null);
+			}
+		},
+	},
 	clearRow: {
 		key: "escape",
-		description: "Clear the selected row",
+		description: "Close the row view, or clear the selected row",
 		screen: "database",
-		run: withGrid((grid: GridView): void => grid.clearSelection()),
+		run: withGrid((grid: GridView): void => {
+			if ($viewer.get() === null) {
+				grid.clearSelection();
+			} else {
+				closeViewer();
+			}
+		}),
 	},
 	disconnect: {
 		key: "c",

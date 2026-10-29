@@ -80,6 +80,17 @@ export function displayText(text: string): string {
 		.replace(CONTROL_CHARACTERS, controlPicture);
 }
 
+// Like displayText, for text drawn over several lines: newlines stay, and tabs
+// become two spaces.
+export function displayLines(text: string): string {
+	return text
+		.replace(/\r\n/g, "\n")
+		.replace(/\t/g, "  ")
+		.replace(CONTROL_CHARACTERS, (character: string): string =>
+			character === "\n" ? character : controlPicture(character),
+		);
+}
+
 export function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }

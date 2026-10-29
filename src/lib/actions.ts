@@ -83,9 +83,20 @@ function confirmWrite(write: Write): void {
 	});
 }
 
-// Copies the text, showing why it couldn't be.
-export function copyToClipboard(text: string): Promise<void> {
-	return report((): Promise<string | null> => copyText(text));
+// Copies the text, showing why it couldn't be, or else calling onCopied.
+export function copyToClipboard(
+	text: string,
+	onCopied?: () => void,
+): Promise<void> {
+	return report(async (): Promise<string | null> => {
+		const error: string | null = await copyText(text);
+
+		if (error === null) {
+			onCopied?.();
+		}
+
+		return error;
+	});
 }
 
 // Lists the tables again. Tables that are gone close their tabs.

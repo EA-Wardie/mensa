@@ -49,6 +49,9 @@ export const TEXTAREA_MAX_ROWS: number = 10;
 
 export const CHOICE_MAX_ROWS: number = 6;
 
+// The row view shows this much of a value, so a huge one doesn't stall it.
+export const VIEW_MAX_LENGTH: number = 100_000;
+
 // varchar columns longer than this are edited in a textarea.
 export const LONG_TEXT_LENGTH: number = 255;
 
@@ -65,6 +68,17 @@ export const CROSS: string = "┼";
 
 export const BOTTOM_TEE: string = "┴";
 
+export const RIGHT_TEE: string = "┤";
+
+// How strongly a scrollbar's thumb tints the rule it runs along, while it
+// isn't in use and while it is.
+export const THUMB_IDLE_ALPHA: number = 0.2;
+
+export const THUMB_ACTIVE_ALPHA: number = 0.5;
+
+// How long a scrollbar's thumb stays in use after a scroll, in milliseconds.
+export const THUMB_TIMEOUT: number = 1000;
+
 export const CLOSE_ICON: string = "󰅖";
 
 export const ADD_ICON: string = "󰐕";
@@ -77,6 +91,11 @@ export const RUN_ICON: string = "󰐊";
 
 export const EDIT_ICON: string = "󰏫";
 
+// Pretty printed JSON's indent, in the editor, the view and copied rows.
+export const JSON_INDENT: string = "  ";
+
+export const VIEW_ICON: string = "󰈈";
+
 export const COPY_ICON: string = "󰆏";
 
 export const DELETE_ICON: string = "󰆴";
@@ -84,6 +103,8 @@ export const DELETE_ICON: string = "󰆴";
 export const TRUNCATE_ICON: string = "󰃢";
 
 export const SWITCH_ICON: string = "󰓡";
+
+export const MENU_ICON: string = "󰍜";
 
 export const KEY_ICON: string = "󰌋";
 

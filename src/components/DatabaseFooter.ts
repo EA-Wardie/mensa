@@ -16,7 +16,6 @@ import {
 	type Tab,
 	type TableData,
 } from "../lib/store";
-import { Divider } from "./Divider";
 import { IconButton } from "./IconButton";
 import { NoticeText } from "./NoticeText";
 
@@ -69,8 +68,9 @@ export class DatabaseFooter {
 	constructor(options: core.BoxOptions) {
 		this._options = options;
 
+		// The grid above draws the top border, joined to its columns.
 		this._component = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
+			border: ["bottom"],
 			borderColor: theme.border,
 			bottomTitle: ` v${version} `,
 			bottomTitleAlignment: "right",
@@ -79,9 +79,10 @@ export class DatabaseFooter {
 			...this._options,
 		});
 
-		// The buttons and their divider are one box, so they stay together, and
-		// an empty box that follows its width on the right keeps the text
-		// centred.
+		// The buttons are one box, so they stay together, and an empty box that
+		// follows its width on the right keeps the text centred. Nothing divides
+		// them from the text, so the rule above stays the grid's, joined to its
+		// columns.
 		const actions: core.BoxRenderable = new core.BoxRenderable(ctx, {
 			flexDirection: "row",
 			flexShrink: 0,
@@ -117,7 +118,6 @@ export class DatabaseFooter {
 				onClick: SHORTCUTS.closeTab.run,
 			}),
 		);
-		actions.add(Divider.make({ vertical: true, joined: true }));
 
 		this._component.add(actions);
 		this._component.add(

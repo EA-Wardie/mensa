@@ -20,11 +20,17 @@ const THEME_KEYS = [
 	"warning",
 	"accent",
 	"surface",
+	"scrollbar",
 ] as const;
+
+// The colours of highlighted JSON in the row view.
+const SYNTAX_KEYS = ["string", "number", "constant"] as const;
 
 type ThemeKey = (typeof THEME_KEYS)[number];
 
-type BaseColorKey = Exclude<ThemeKey, "surface">;
+type SyntaxKey = (typeof SYNTAX_KEYS)[number];
+
+type BaseColorKey = Exclude<ThemeKey, "surface" | "scrollbar">;
 
 export interface ThemeType {
 	bg: RGBA;
@@ -42,12 +48,16 @@ export interface ThemeType {
 	transparent: RGBA;
 	scrollbar_thumb: RGBA;
 	scrollbar_track: RGBA;
+	// The grid's thumbs, drawn as a line over its borders, so they stand out
+	// from them.
+	scrollbar: RGBA;
 	accent: RGBA;
 	success: RGBA;
 	success_pressed: RGBA;
 	danger: RGBA;
 	danger_pressed: RGBA;
 	warning: RGBA;
+	syntax: Record<SyntaxKey, RGBA>;
 }
 
 const SSL_MODES = [
@@ -393,6 +403,19 @@ const defaultTheme: Record<BaseColorKey, string> = {
 	accent: "#0369a1",
 };
 
+// GitHub's highlighting colours, for a dark and a light background.
+const DARK_SYNTAX: Record<SyntaxKey, string> = {
+	string: "#A5D6FF",
+	number: "#79C0FF",
+	constant: "#FF7B72",
+};
+
+const LIGHT_SYNTAX: Record<SyntaxKey, string> = {
+	string: "#0A3069",
+	number: "#0550AE",
+	constant: "#CF222E",
+};
+
 // The default warning on a light background, where the yellow is hard to see.
 const LIGHT_WARNING: string = "#a16207";
 
@@ -417,7 +440,7 @@ function parseThemeColor(key: string, value: unknown): RGBA | undefined {
 	return undefined;
 }
 
-function withAlpha(color: RGBA, alpha: number): RGBA {
+export function withAlpha(color: RGBA, alpha: number): RGBA {
 	return RGBA.fromValues(color.r, color.g, color.b, alpha);
 }
 
@@ -437,6 +460,8 @@ function parseColorTable<K extends string>(
 	name: string,
 	value: unknown,
 	keys: readonly K[],
+	// Keys that hold a table of their own, parsed separately.
+	tables: readonly string[] = [],
 ): Partial<Record<K, RGBA>> {
 	const colors: Partial<Record<K, RGBA>> = {};
 
@@ -451,6 +476,10 @@ function parseColorTable<K extends string>(
 	}
 
 	for (const [key, color] of Object.entries(value)) {
+		if (tables.includes(key)) {
+			continue;
+		}
+
 		if (!isOneOf(keys, key)) {
 			logError(new Error(`Unknown ${name} key "${key}"`));
 
@@ -472,6 +501,12 @@ function makeTheme(config: unknown): ThemeType {
 		"theme",
 		config,
 		THEME_KEYS,
+		["syntax"],
+	);
+	const syntaxColors: Partial<Record<SyntaxKey, RGBA>> = parseColorTable(
+		"theme.syntax",
+		isTable(config) ? config.syntax : undefined,
+		SYNTAX_KEYS,
 	);
 	const color = (key: BaseColorKey): RGBA =>
 		colors[key] ?? parseColor(defaultTheme[key]);
@@ -484,6 +519,9 @@ function makeTheme(config: unknown): ThemeType {
 	const dark: boolean = transparent ? isLight(fg) : !isLight(bg);
 	const fallback: RGBA = dark ? BLACK : WHITE;
 	const opaqueBg: RGBA = transparent ? fallback : withAlpha(bg, 1);
+	const palette: Record<SyntaxKey, string> = dark ? DARK_SYNTAX : LIGHT_SYNTAX;
+	const syntax = (key: SyntaxKey): RGBA =>
+		syntaxColors[key] ?? parseColor(palette[key]);
 
 	return {
 		bg,
@@ -501,6 +539,7 @@ function makeTheme(config: unknown): ThemeType {
 		transparent: TRANSPARENT,
 		scrollbar_thumb: withAlpha(fg, 0.5),
 		scrollbar_track: TRANSPARENT,
+		scrollbar: colors.scrollbar ?? fg,
 		accent: color("accent"),
 		success,
 		success_pressed: withAlpha(success, 0.75),
@@ -508,6 +547,11 @@ function makeTheme(config: unknown): ThemeType {
 		danger_pressed: withAlpha(danger, 0.75),
 		warning:
 			colors.warning ?? parseColor(dark ? defaultTheme.warning : LIGHT_WARNING),
+		syntax: {
+			string: syntax("string"),
+			number: syntax("number"),
+			constant: syntax("constant"),
+		},
 	};
 }
 

@@ -1,7 +1,13 @@
 import * as core from "@opentui/core";
 import type { ColumnIcon } from "../lib/columnKinds";
 import { theme } from "../lib/config";
-import { BOTTOM_TEE, CROSS, SEPARATOR, TOP_TEE } from "../lib/consts";
+import {
+	BOTTOM_TEE,
+	CROSS,
+	RIGHT_TEE,
+	SEPARATOR,
+	TOP_TEE,
+} from "../lib/consts";
 import { ctx } from "../lib/context";
 import { displayText, fitText, NULL_TEXT } from "../lib/format";
 import {
@@ -9,11 +15,14 @@ import {
 	type Cell,
 	columnSpan,
 	type Grid,
+	type GridSource,
 	ICON_SPACE,
 } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
-import { HorizontalScrollBar } from "./HorizontalScrollBar";
+import { $viewer, type ViewerTarget } from "../lib/store";
+import { viewRow } from "../lib/viewer";
+import { RuleScrollBar } from "./RuleScrollBar";
 
 export interface Position {
 	x: number;
@@ -34,17 +43,20 @@ const RULE: string = "─";
 const SCROLL_STEP_X: number = 4;
 
 // Rows under their column names, drawing only the rows and columns in view,
-// with scrollbars both ways. A subclass gives the grid and says what clicks
-// on it do.
+// and closed off by a rule on the last row, which is the footer's top border.
+// The scrollbars run along that rule and the parent's right border. A subclass
+// gives the grid and says what clicks on it do.
 export abstract class GridView extends core.Renderable {
 	// The grid the shown tab has, which the shortcuts scroll.
 	public static current: GridView | null = null;
 
-	private _vertical: core.ScrollBarRenderable;
-	private _horizontal: HorizontalScrollBar;
+	private _vertical: RuleScrollBar;
+	private _horizontal: RuleScrollBar;
 	private _grid: Grid | null = null;
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
+	// A rule as wide as the grid, kept until the width changes.
+	private _rule: string = "";
 	protected _offset: Position = { x: 0, y: 0 };
 
 	constructor(options: core.RenderableOptions<GridView>) {
@@ -54,29 +66,24 @@ export abstract class GridView extends core.Renderable {
 			...options,
 		});
 
-		this._vertical = new core.ScrollBarRenderable(ctx, {
+		// On the parent's right border, beside the rows.
+		this._vertical = RuleScrollBar.make({
 			orientation: "vertical",
 			position: "absolute",
 			top: HEADER_HEIGHT,
-			right: 0,
-			bottom: 0,
-			trackOptions: {
-				foregroundColor: theme.scrollbar_thumb,
-				backgroundColor: theme.scrollbar_track,
-			},
+			right: -1,
+			bottom: 1,
 			onChange: (position: number): void => {
 				this.scrollTo({ x: this._offset.x, y: position });
 			},
 		});
 
-		this._vertical.focusable = false;
-
-		this._horizontal = HorizontalScrollBar.make({
+		this._horizontal = RuleScrollBar.make({
+			orientation: "horizontal",
 			position: "absolute",
 			left: 0,
-			right: 1,
+			right: 0,
 			bottom: 0,
-			visible: false,
 			onChange: (position: number): void => {
 				this.scrollTo({ x: position, y: this._offset.y });
 			},
@@ -85,11 +92,20 @@ export abstract class GridView extends core.Renderable {
 		this.add(this._vertical);
 		this.add(this._horizontal);
 
-		unbindOnDestroy(this, (): void => {
-			if (GridView.current === this) {
-				GridView.current = null;
-			}
-		});
+		// Viewing one of these rows selects it, so the selection follows the view.
+		unbindOnDestroy(
+			this,
+			(): void => {
+				if (GridView.current === this) {
+					GridView.current = null;
+				}
+			},
+			$viewer.listen((target: ViewerTarget | null): void => {
+				if (target && target.rows === this.source()?.rows) {
+					this.selectRowAt(target.row);
+				}
+			}),
+		);
 	}
 
 	// Why there are no rows to show, such as while they load, or null.
@@ -98,6 +114,11 @@ export abstract class GridView extends core.Renderable {
 	public abstract selectedRow(): number | null;
 
 	public abstract clearSelection(): void;
+
+	protected abstract selectRowAt(row: number): void;
+
+	// The rows the grid shows, as the view and the row menu read them.
+	protected abstract source(): GridSource | null;
 
 	protected messageColor(): core.RGBA {
 		return theme.muted;
@@ -126,6 +147,34 @@ export abstract class GridView extends core.Renderable {
 
 	protected onScrolled(): void {}
 
+	// The full name of a column, which the grid's own may cut.
+	protected columnName(index: number | null): string | null {
+		return index === null ? null : (this.source()?.columns[index] ?? null);
+	}
+
+	// A click selects a row, and a double click views it at the column. While
+	// the view is open, it follows the clicked row and keeps its scroll.
+	protected clickRow(
+		row: number,
+		column: number | null,
+		double: boolean,
+	): void {
+		if (double || $viewer.get() !== null) {
+			viewRow(row, double ? this.columnName(column) : null);
+		} else {
+			this.selectRowAt(row);
+		}
+	}
+
+	// The row a menu opens on, which the view follows while it's open.
+	protected pickRow(row: number): void {
+		if ($viewer.get() !== null) {
+			viewRow(row, null);
+		} else {
+			this.selectRowAt(row);
+		}
+	}
+
 	protected get grid(): Grid | null {
 		return this._grid;
 	}
@@ -138,17 +187,27 @@ export abstract class GridView extends core.Renderable {
 		this.sync();
 	}
 
-	private get scrollsX(): boolean {
-		return (this._grid?.totalWidth ?? 0) > this.bodyWidth;
-	}
-
-	// The horizontal scrollbar takes a row only when the columns overflow.
+	// The rows sit between the header and the bottom rule.
 	private get bodyHeight(): number {
-		return Math.max(0, this.height - HEADER_HEIGHT - (this.scrollsX ? 1 : 0));
+		return Math.max(0, this.height - HEADER_HEIGHT - 1);
 	}
 
-	private get bodyWidth(): number {
-		return Math.max(0, this.width - 1);
+	// How many rows are in view.
+	private get shownRows(): number {
+		return Math.min(
+			(this._grid?.cells.length ?? 0) - this._offset.y,
+			this.bodyHeight,
+		);
+	}
+
+	// The columns scroll until the last one's separator lands on the parent's
+	// right border, which stands in for it.
+	private get viewWidth(): number {
+		return this.width + 1;
+	}
+
+	private get bottomY(): number {
+		return this.screenY + this.height - 1;
 	}
 
 	private scrollRows(delta: number): void {
@@ -164,6 +223,29 @@ export abstract class GridView extends core.Renderable {
 			x: this._offset.x,
 			y: end ? Number.MAX_SAFE_INTEGER : 0,
 		});
+	}
+
+	// The row step rows from the selection, or the first row when there is
+	// none, scrolled into view for whoever selects it. Null with no rows.
+	public stepRow(step: number): number | null {
+		const count: number = this._grid?.cells.length ?? 0;
+		const selected: number | null = this.selectedRow();
+
+		if (!count) {
+			return null;
+		}
+
+		const row: number =
+			selected === null ? 0 : clamp(selected + step, 0, count - 1);
+		const top: number = this._offset.y;
+		const height: number = Math.max(1, this.bodyHeight);
+
+		this.scrollTo({
+			x: this._offset.x,
+			y: row < top ? row : row >= top + height ? row - height + 1 : top,
+		});
+
+		return row;
 	}
 
 	public scrollColumns(direction: number): void {
@@ -197,18 +279,15 @@ export abstract class GridView extends core.Renderable {
 		}
 
 		if (!this._grid) {
+			this.drawRule(buffer, this.bottomY);
+
 			return;
 		}
 
 		this.drawRules(buffer);
 		this.drawHighlights(buffer, this._grid);
 
-		buffer.pushScissorRect(
-			this.screenX,
-			this.screenY,
-			this.bodyWidth,
-			this.height,
-		);
+		buffer.pushScissorRect(this.screenX, this.screenY, this.width, this.height);
 
 		this.drawHeader(buffer, this._grid);
 		this.drawRows(buffer, this._grid);
@@ -220,53 +299,62 @@ export abstract class GridView extends core.Renderable {
 		const width: number = Math.max(0, this.width - 2);
 		const centred: boolean = this.centresMessage();
 
-		if (width <= 0 || this.height <= 1) {
+		// The footer's top border, however short the grid.
+		this.drawRule(buffer, this.bottomY);
+
+		if (width <= 0 || this.height <= 2) {
 			return;
 		}
 
-		buffer.drawText(
-			RULE.repeat(this.width),
-			this.screenX,
-			this.screenY,
-			theme.border,
-		);
+		this.drawRule(buffer, this.screenY);
 
 		const text: string = fitText(displayText(message), width);
 		const x: number = centred
 			? this.screenX + Math.floor((this.width - Bun.stringWidth(text)) / 2)
 			: this.screenX + 1;
 		const y: number = centred
-			? this.screenY + 1 + Math.floor((this.height - 2) / 2)
+			? this.screenY + 1 + Math.floor((this.height - 3) / 2)
 			: this.screenY + 1;
 
 		buffer.drawText(text, x, y, this.messageColor());
 	}
 
-	// Full width, past the scrollbar column, to meet the tabs' border. The
-	// header then draws the column joins over them.
+	// Full width, meeting the parent's right border with a tee. The header and
+	// the rows then draw the column joins over them.
+	private drawRule(buffer: core.OptimizedBuffer, y: number): void {
+		if (this._rule.length !== this.width) {
+			this._rule = RULE.repeat(this.width);
+		}
+
+		buffer.drawText(this._rule, this.screenX, y, theme.border);
+		buffer.drawText(RIGHT_TEE, this.screenX + this.width, y, theme.border);
+	}
+
 	private drawRules(buffer: core.OptimizedBuffer): void {
-		const rule: string = RULE.repeat(this.width);
+		const end: number | null = this.rowsEndY();
 
-		buffer.drawText(rule, this.screenX, this.screenY, theme.border);
-		buffer.drawText(rule, this.screenX, this.screenY + 2, theme.border);
+		this.drawRule(buffer, this.screenY);
+		this.drawRule(buffer, this.screenY + 2);
+		this.drawRule(buffer, this.bottomY);
 
-		const bottom: number | null = this.bottomRuleY();
-
-		if (bottom !== null) {
-			buffer.drawText(rule, this.screenX, bottom, theme.border);
+		if (end !== null && end !== this.bottomY) {
+			this.drawRule(buffer, end);
 		}
 	}
 
-	// Closes off the last row when there is room for it under the rows.
-	private bottomRuleY(): number | null {
-		const shown: number = Math.min(
-			(this._grid?.cells.length ?? 0) - this._offset.y,
-			this.bodyHeight,
-		);
+	// The rule the column separators end at: one under the last row, or the
+	// bottom rule when the rows reach it or leave a single row above it, so
+	// two rules never touch. Null with no rows in view.
+	private rowsEndY(): number | null {
+		const shown: number = this.shownRows;
 
-		return shown > 0 && shown < this.bodyHeight
-			? this.screenY + HEADER_HEIGHT + shown
-			: null;
+		if (shown <= 0) {
+			return null;
+		}
+
+		return shown >= this.bodyHeight - 1
+			? this.bottomY
+			: this.screenY + HEADER_HEIGHT + shown;
 	}
 
 	private drawHeader(buffer: core.OptimizedBuffer, grid: Grid): void {
@@ -308,8 +396,7 @@ export abstract class GridView extends core.Renderable {
 		);
 	}
 
-	// The hovered and selected rows, drawn before the clip, so they take the
-	// scrollbar's column too while it's hidden, like the rules do.
+	// The hovered and selected rows, drawn before the clip.
 	private drawHighlights(buffer: core.OptimizedBuffer, grid: Grid): void {
 		const selected: number | null = this.selectedRow();
 
@@ -340,7 +427,7 @@ export abstract class GridView extends core.Renderable {
 		buffer.fillRect(
 			this.screenX,
 			this.screenY + HEADER_HEIGHT + shown,
-			this._vertical.visible ? this.bodyWidth : this.width,
+			this.width,
 			1,
 			color,
 		);
@@ -363,17 +450,9 @@ export abstract class GridView extends core.Renderable {
 			return;
 		}
 
-		const bottom: number | null = this.bottomRuleY();
 		const selected: number | null = this.selectedRow();
 
-		if (bottom !== null) {
-			this.forEachColumn(
-				grid,
-				(_column: number, _x: number, separator: number): void => {
-					buffer.drawText(BOTTOM_TEE, separator, bottom, theme.border);
-				},
-			);
-		}
+		this.drawRowsEnd(buffer, grid);
 
 		for (let index: number = this._offset.y; index < end; index++) {
 			const row: Cell[] | undefined = grid.cells[index];
@@ -410,10 +489,32 @@ export abstract class GridView extends core.Renderable {
 		}
 	}
 
+	// Runs the separators from under the last row down to the rule they end
+	// at, joined to it.
+	private drawRowsEnd(buffer: core.OptimizedBuffer, grid: Grid): void {
+		const from: number = this.screenY + HEADER_HEIGHT + this.shownRows;
+		const end: number | null = this.rowsEndY();
+
+		if (end === null) {
+			return;
+		}
+
+		this.forEachColumn(
+			grid,
+			(_column: number, _x: number, separator: number): void => {
+				for (let y: number = from; y < end; y++) {
+					buffer.drawText(SEPARATOR, separator, y, theme.border);
+				}
+
+				buffer.drawText(BOTTOM_TEE, separator, end, theme.border);
+			},
+		);
+	}
+
 	private columnAt(screenX: number): number | null {
 		let found: number | null = null;
 
-		if (!this._grid || screenX >= this.screenX + this.bodyWidth) {
+		if (!this._grid || screenX >= this.screenX + this.width) {
 			return null;
 		}
 
@@ -433,7 +534,7 @@ export abstract class GridView extends core.Renderable {
 		grid: Grid,
 		draw: (index: number, x: number, separator: number) => void,
 	): void {
-		const right: number = this.screenX + this.bodyWidth;
+		const right: number = this.screenX + this.width;
 		let x: number = this.screenX - this._offset.x;
 
 		for (let index: number = 0; index < grid.widths.length; index++) {
@@ -467,7 +568,7 @@ export abstract class GridView extends core.Renderable {
 		switch (event.type) {
 			case "down":
 				if (own) {
-					this._horizontal.release();
+					this.releaseScrollBars(event);
 				}
 
 				if (event.button === core.MouseButton.LEFT) {
@@ -481,7 +582,7 @@ export abstract class GridView extends core.Renderable {
 			case "up":
 			case "drag-end":
 				if (own) {
-					this._horizontal.release();
+					this.releaseScrollBars(event);
 				}
 				break;
 			case "scroll":
@@ -489,7 +590,8 @@ export abstract class GridView extends core.Renderable {
 				break;
 			case "drag":
 				if (own) {
-					this._horizontal.drag(event.x);
+					this._horizontal.drag(event.x, event.y);
+					this._vertical.drag(event.x, event.y);
 				}
 
 				this.trackHover(event);
@@ -500,6 +602,11 @@ export abstract class GridView extends core.Renderable {
 				this.trackHover(event);
 				break;
 		}
+	}
+
+	private releaseScrollBars(event: core.MouseEvent): void {
+		this._horizontal.release(event.x, event.y);
+		this._vertical.release(event.x, event.y);
 	}
 
 	private trackHover(event: core.MouseEvent): void {
@@ -566,7 +673,7 @@ export abstract class GridView extends core.Renderable {
 	// The row a press is on. Presses on the scrollbars bubble up here too, so
 	// only the grid's own count.
 	private bodyRowAt(event: core.MouseEvent): number | null {
-		return event.target !== this || event.x >= this.screenX + this.bodyWidth
+		return event.target !== this || event.x >= this.screenX + this.width
 			? null
 			: this.rowAt(event.y);
 	}
@@ -596,35 +703,37 @@ export abstract class GridView extends core.Renderable {
 
 	private sync(): void {
 		const grid: Grid | null = this._grid;
-		const scrollsX: boolean = this.scrollsX;
-		const bottom: number = scrollsX ? 1 : 0;
-
-		if (this._vertical.bottom !== bottom) {
-			this._vertical.bottom = bottom;
-		}
-
-		if (this._horizontal.visible !== scrollsX) {
-			this._horizontal.visible = scrollsX;
-		}
 
 		this._vertical.scrollSize = grid?.cells.length ?? 0;
 		this._vertical.viewportSize = this.bodyHeight;
 		this._horizontal.scrollSize = grid?.totalWidth ?? 0;
-		this._horizontal.viewportSize = this.bodyWidth;
+		this._horizontal.viewportSize = this.viewWidth;
 
-		this.scrollTo(this._offset);
+		this.scrollTo(this._offset, false);
 	}
 
-	private scrollTo(position: Position): void {
+	// A scroll that moves marks the moved scrollbars as in use for a moment,
+	// unless it only keeps the offset in range.
+	private scrollTo(position: Position, reveal: boolean = true): void {
 		const rows: number = this._grid?.cells.length ?? 0;
 		const width: number = this._grid?.totalWidth ?? 0;
 		const maxY: number = Math.max(0, rows - this.bodyHeight);
-		const maxX: number = Math.max(0, width - this.bodyWidth);
+		const maxX: number = Math.max(0, width - this.viewWidth);
 
-		this._offset = {
+		const offset: Position = {
 			x: clamp(position.x, 0, maxX),
 			y: clamp(position.y, 0, maxY),
 		};
+
+		if (reveal && offset.y !== this._offset.y) {
+			this._vertical.flash();
+		}
+
+		if (reveal && offset.x !== this._offset.x) {
+			this._horizontal.flash();
+		}
+
+		this._offset = offset;
 		this._vertical.scrollPosition = this._offset.y;
 		this._horizontal.scrollPosition = this._offset.x;
 

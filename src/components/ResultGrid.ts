@@ -1,8 +1,11 @@
 import type * as core from "@opentui/core";
+import { DoubleClick } from "../lib/clicks";
 import { plural } from "../lib/format";
-import { gridOf } from "../lib/grid";
+import { type GridSource, gridOf } from "../lib/grid";
+import { copyRowItems, viewRowItem } from "../lib/rowMenu";
 import type { QueryResult } from "../lib/store";
 import { GridView } from "./GridView";
+import { Menu } from "./Menu";
 
 interface Options extends core.RenderableOptions<GridView> {
 	runKey: string;
@@ -10,14 +13,16 @@ interface Options extends core.RenderableOptions<GridView> {
 	onPress: () => void;
 }
 
-// A query tab's rows. They are read only, so a click only selects a row, and
-// new rows start at the top with no selection. Its query view shows an error
-// in its place.
+// A query tab's rows. They are read only, so a click selects a row and a
+// double click views it, and new rows start at the top with no selection. Its
+// query view shows an error in its place.
 export class ResultGrid extends GridView {
 	private _runKey: string;
 	private _onPress: () => void;
 	private _result: QueryResult | undefined = undefined;
+	private _source: GridSource | null = null;
 	private _selected: number | null = null;
+	private _clicks: DoubleClick<number> = new DoubleClick<number>();
 
 	constructor({ runKey, onPress, ...options }: Options) {
 		super(options);
@@ -32,12 +37,11 @@ export class ResultGrid extends GridView {
 
 	public show(result: QueryResult | undefined): void {
 		this._result = result;
+		this._source = result?.status === "rows" ? { ...result, meta: null } : null;
 		this._selected = null;
+		this._clicks.reset();
 
-		this.setGrid(
-			result?.status === "rows" ? gridOf({ ...result, meta: null }) : null,
-			{ x: 0, y: 0 },
-		);
+		this.setGrid(this._source ? gridOf(this._source) : null, { x: 0, y: 0 });
 	}
 
 	protected override message(): string | null {
@@ -66,14 +70,43 @@ export class ResultGrid extends GridView {
 		this.select(null);
 	}
 
+	protected override selectRowAt(row: number): void {
+		this.select(row);
+	}
+
+	protected override source(): GridSource | null {
+		return this._source;
+	}
+
 	protected override onPress(): void {
 		this._onPress();
 	}
 
-	protected override onRowClick(row: number | null): void {
-		if (row !== null) {
-			this.select(row);
+	protected override onRowClick(
+		row: number | null,
+		column: number | null,
+	): void {
+		if (row === null) {
+			this._clicks.reset();
+		} else {
+			this.clickRow(row, column, this._clicks.click(row));
 		}
+	}
+
+	protected override onRowMenu(event: core.MouseEvent, row: number): void {
+		const source: GridSource | null = this._source;
+
+		if (!source) {
+			return;
+		}
+
+		this.pickRow(row);
+
+		Menu.make({
+			x: event.x,
+			y: event.y,
+			items: [viewRowItem(row), "divider", ...copyRowItems(source, row)],
+		});
 	}
 
 	private select(row: number | null): void {

@@ -1,18 +1,17 @@
 import type * as core from "@opentui/core";
-import { copyToClipboard, deleteRowAt } from "../lib/actions";
+import { deleteRowAt } from "../lib/actions";
 import { DoubleClick } from "../lib/clicks";
 import { theme } from "../lib/config";
 import {
-	COPY_ICON,
 	DELETE_ICON,
 	EDIT_ICON,
 	SORT_ASC_ICON,
 	SORT_DESC_ICON,
 } from "../lib/consts";
 import { confirmDiscard, editRow } from "../lib/editor";
-import { rowAsCsv, rowAsJson } from "../lib/export";
-import { gridFor } from "../lib/grid";
+import { type GridSource, gridFor } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
+import { copyRowItems, viewRowItem } from "../lib/rowMenu";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import {
 	$activeTable,
@@ -24,7 +23,6 @@ import {
 	$tabs,
 	type Sort,
 	type TableData,
-	type Value,
 } from "../lib/store";
 import { selectRow, sortTable } from "../lib/tabs";
 import { GridView, type HeaderMarker, type Position } from "./GridView";
@@ -99,7 +97,9 @@ export class DataGrid extends GridView {
 		const requested: Sort | null =
 			(this._table === null ? undefined : $sorts.get()[this._table]) ?? null;
 		const sort: Sort | null = requested ?? applied;
-		const index: number = sort ? this.columnNames().indexOf(sort.column) : -1;
+		const index: number = sort
+			? (this.source()?.columns.indexOf(sort.column) ?? -1)
+			: -1;
 
 		if (!sort || index < 0) {
 			return null;
@@ -125,20 +125,28 @@ export class DataGrid extends GridView {
 		selectRow(null);
 	}
 
+	protected override selectRowAt(row: number): void {
+		selectRow(row);
+	}
+
+	protected override source(): GridSource | null {
+		return this._data?.status === "loaded" ? this._data : null;
+	}
+
 	// Clicking a column name cycles its sort, which reloads the rows and so
 	// closes the row editor.
 	protected override onHeaderClick(index: number): void {
-		const column: string | undefined = this.columnNames()[index];
+		const column: string | null = this.columnName(index);
 
-		if (column !== undefined) {
+		if (column !== null) {
 			confirmDiscard((): void => {
 				sortTable(column);
 			});
 		}
 	}
 
-	// Clicking a row selects it, and double clicking a cell edits its row. While
-	// the editor is open, the selection stays on its row.
+	// While the editor is open, the selection stays on its row, and a double
+	// click moves the editor's focus.
 	protected override onRowClick(
 		row: number | null,
 		column: number | null,
@@ -149,18 +157,17 @@ export class DataGrid extends GridView {
 			return;
 		}
 
-		if (this._clicks.click({ row: row, column: column })) {
-			editRow(
-				row,
-				column === null ? null : (this.columnNames()[column] ?? null),
-			);
-		} else if ($editor.get() === null) {
-			selectRow(row);
+		const double: boolean = this._clicks.click({ row: row, column: column });
+
+		if ($editor.get() === null) {
+			this.clickRow(row, column, double);
+		} else if (double) {
+			editRow(row, this.columnName(column));
 		}
 	}
 
-	// Right clicking a row opens its menu, and selects it unless the editor is
-	// open. The menu acts on the rows it was opened on.
+	// Right clicking a row opens its menu, and picks the row unless the editor
+	// is open. The menu acts on the rows it was opened on.
 	protected override onRowMenu(event: core.MouseEvent, row: number): void {
 		const table: string | null = this._table;
 		const data: TableData | undefined = this._data;
@@ -170,15 +177,14 @@ export class DataGrid extends GridView {
 		}
 
 		if ($editor.get() === null) {
-			selectRow(row);
+			this.pickRow(row);
 		}
-
-		const values: Value[] = data.rows[row] ?? [];
 
 		Menu.make({
 			x: event.x,
 			y: event.y,
 			items: [
+				viewRowItem(row),
 				{
 					label: `${EDIT_ICON} Edit`,
 					shortcut: shortcutLabel(SHORTCUTS.editRow),
@@ -186,18 +192,8 @@ export class DataGrid extends GridView {
 						editRow(row, null);
 					},
 				},
-				{
-					label: `${COPY_ICON} Copy as CSV`,
-					onSelect: (): void => {
-						copyToClipboard(rowAsCsv(data.columns, values));
-					},
-				},
-				{
-					label: `${COPY_ICON} Copy as JSON`,
-					onSelect: (): void => {
-						copyToClipboard(rowAsJson(data.columns, data.kinds, values));
-					},
-				},
+				"divider",
+				...copyRowItems(data, row),
 				"divider",
 				{
 					label: `${DELETE_ICON} Delete`,
@@ -222,10 +218,6 @@ export class DataGrid extends GridView {
 	// The sort the shown rows have.
 	private loadedSort(): Sort | null {
 		return this._data?.status === "loaded" ? this._data.sort : null;
-	}
-
-	private columnNames(): string[] {
-		return this._data?.status === "loaded" ? this._data.columns : [];
 	}
 
 	private update(): void {
