@@ -28,9 +28,9 @@
 
 ### Internal
 
-- `HorizontalScrollBar` is now `RuleScrollBar`, for either orientation. It draws only its thumb, in a post-process pass after the frame, as a `fillRect` of `theme.scrollbar` at `THUMB_IDLE_ALPHA`, or `THUMB_ACTIVE_ALPHA` while it's hovered, dragged or `flash`ed by a scroll for `THUMB_TIMEOUT`. Neither is opaque, so the fill keeps the cells' glyphs. `GridView` uses it for both scrollbars, and scrolls without flashing when it only keeps the offset in range. The vertical one sits on the parent's right border, at `right: -1`.
+- `HorizontalScrollBar` is now `RuleScrollBar`, for either orientation. It draws only its thumb, after its owner has drawn the rule, as a `fillRect` of `theme.scrollbar` at `THUMB_IDLE_ALPHA`, or `THUMB_ACTIVE_ALPHA` while it's hovered, dragged or `flash`ed by a scroll for `THUMB_TIMEOUT`. Neither is opaque, so the fill keeps the cells' glyphs. `GridView` uses it for both scrollbars, and scrolls without flashing when it only keeps the offset in range. The vertical one sits on the parent's right border, at `right: -1`.
 - `GridView` draws the footer's top border as its last row, and `┤` where its rules meet the right border. The footer has only a bottom border, and a query's error keeps a bottom border in place of the grid.
-- `lib/viewer.ts` holds the view's `$viewer` target, `lib/syntax.ts` the highlighting styles, and `fieldHeading` in `EditorField.ts` the label both sidebars share. `GridView.stepSelection` moves a grid's selection for the view.
+- `lib/viewer.ts` holds the view's `$viewer` target, `lib/syntax.ts` the highlighting styles, and `fieldHeading` in `EditorField.ts` the label both sidebars share. `GridView.stepRow` finds the row the view steps to and scrolls it into view, and each grid selects the viewed row from `$viewer`. `Sidebar` is the frame the row editor and the row view share, `lib/rowMenu.ts` the row menu items both grids have, and `afterLayout` the run-after-the-next-frame helper.
 - `refreshTable` in `lib/tabs.ts` shows a table and reloads it if it was open.
 
 ## 0.2.8

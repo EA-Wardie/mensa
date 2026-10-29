@@ -1,7 +1,6 @@
+import { JSON_INDENT } from "./consts";
 import { isJson, reformatJson } from "./format";
 import type { TypeKind, Value } from "./store";
-
-const JSON_INDENT: string = "  ";
 
 // A number as JSON writes it, so the database's digits can be kept as they
 // are. NaN, Infinity and money aren't.

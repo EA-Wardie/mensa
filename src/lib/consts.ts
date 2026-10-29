@@ -91,6 +91,9 @@ export const RUN_ICON: string = "󰐊";
 
 export const EDIT_ICON: string = "󰏫";
 
+// Pretty printed JSON's indent, in the editor, the view and copied rows.
+export const JSON_INDENT: string = "  ";
+
 export const VIEW_ICON: string = "󰈈";
 
 export const COPY_ICON: string = "󰆏";

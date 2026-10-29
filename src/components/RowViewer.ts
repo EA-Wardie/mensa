@@ -3,10 +3,9 @@ import { copyToClipboard } from "../lib/actions";
 import { theme } from "../lib/config";
 import {
 	CANCEL_ICON,
-	CLOSE_ICON,
 	COPY_ICON,
 	EDIT_ICON,
-	EDITOR_WIDTH,
+	JSON_INDENT,
 	VIEW_ICON,
 	VIEW_MAX_LENGTH,
 } from "../lib/consts";
@@ -21,7 +20,7 @@ import {
 	reformatJson,
 } from "../lib/format";
 import type { GridSource } from "../lib/grid";
-import { unbindOnDestroy } from "../lib/lifetime";
+import { afterLayout, unbindOnDestroy } from "../lib/lifetime";
 import {
 	$viewer,
 	type TypeKind,
@@ -33,7 +32,7 @@ import { tabLabel } from "../lib/tabs";
 import { closeViewer, viewerSource } from "../lib/viewer";
 import { Button } from "./Button";
 import { FIELD_WIDTH, fieldHeading } from "./EditorField";
-import { IconButton } from "./IconButton";
+import { Sidebar, type SidebarParts, TITLE_WIDTH } from "./Sidebar";
 
 // The same width, so the label doesn't shift.
 const COPY_LABEL: string = ` ${COPY_ICON} Copy `;
@@ -43,13 +42,10 @@ const COPIED_LABEL: string = " Copied ";
 // How long a copy button says Copied, in milliseconds.
 const COPIED_TIMEOUT: number = 1500;
 
-// The title's room, beside the close button.
-const TITLE_WIDTH: number = EDITOR_WIDTH - 8;
-
-// JSON is pretty printed and highlighted: a json column's values, and text
-// that holds an object or an array.
+// JSON is pretty printed and highlighted: a json column's values, which the
+// database has checked, and text that holds an object or an array.
 function isJsonValue(value: string, kind: TypeKind): boolean {
-	return (kind === "json" || /^\s*[[{]/.test(value)) && isJson(value);
+	return kind === "json" || (/^\s*[[{]/.test(value) && isJson(value));
 }
 
 // A value in full, wrapped, or its start when it's very long.
@@ -86,7 +82,7 @@ function valueView(value: Value, kind: TypeKind): core.Renderable[] {
 		return [
 			new core.CodeRenderable(ctx, {
 				width: "100%",
-				content: displayLines(reformatJson(value, "  ")),
+				content: displayLines(reformatJson(value, JSON_INDENT)),
 				filetype: "javascript",
 				syntaxStyle: syntaxStyles(),
 				fg: theme.fg,
@@ -104,9 +100,25 @@ function valueView(value: Value, kind: TypeKind): core.Renderable[] {
 	];
 }
 
-// Copies a value as the database gave it, and says so for a moment. Drawn
-// like the editor's NULL toggles.
-function copyButton(value: string): core.TextRenderable {
+// A column's field, built once and refilled for each row: its label, with a
+// copy button for the value, and the value under it.
+interface ViewerField {
+	copy: core.TextRenderable;
+	value: core.BoxRenderable;
+	kind: TypeKind;
+	// The value shown, so an unchanged one isn't drawn again.
+	shown: Value | undefined;
+}
+
+function showCopy(button: core.TextRenderable, copied: boolean): void {
+	button.content = copied ? COPIED_LABEL : COPY_LABEL;
+	button.fg = copied ? theme.fg_inverse : theme.muted;
+	button.bg = copied ? theme.accent : theme.input_bg;
+}
+
+// Copies the field's value as the database gave it, and says so for a moment.
+// Drawn like the editor's NULL toggles, and hidden while the value is NULL.
+function copyButton(field: () => ViewerField): core.TextRenderable {
 	let timer: Timer | undefined;
 	const button: core.TextRenderable = new core.TextRenderable(ctx, {
 		content: COPY_LABEL,
@@ -114,7 +126,9 @@ function copyButton(value: string): core.TextRenderable {
 		bg: theme.input_bg,
 		selectable: false,
 		onMouseDown: (event: core.MouseEvent): void => {
-			if (event.button !== core.MouseButton.LEFT) {
+			const value: Value | undefined = field().shown;
+
+			if (event.button !== core.MouseButton.LEFT || typeof value !== "string") {
 				return;
 			}
 
@@ -123,20 +137,20 @@ function copyButton(value: string): core.TextRenderable {
 					return;
 				}
 
-				button.content = COPIED_LABEL;
-				button.fg = theme.fg_inverse;
-				button.bg = theme.accent;
+				showCopy(button, true);
 
 				clearTimeout(timer);
 				timer = setTimeout((): void => {
 					if (!button.isDestroyed) {
-						button.content = COPY_LABEL;
-						button.fg = theme.muted;
-						button.bg = theme.input_bg;
+						showCopy(button, false);
 					}
 				}, COPIED_TIMEOUT);
 			});
 		},
+	});
+
+	unbindOnDestroy(button, (): void => {
+		clearTimeout(timer);
 	});
 
 	return button;
@@ -150,46 +164,30 @@ export class RowViewer {
 	private _source: GridSource;
 	private _component: core.BoxRenderable;
 	private _scroll: core.ScrollBoxRenderable;
+	private _fields: ViewerField[];
 
 	constructor(target: ViewerTarget, source: GridSource) {
 		this._target = target;
 		this._source = source;
 
-		this._component = new core.BoxRenderable(ctx, {
-			width: EDITOR_WIDTH,
-			height: "100%",
-			flexShrink: 0,
-			flexDirection: "column",
-			border: ["right"],
-			borderColor: theme.border,
+		const sidebar: SidebarParts = Sidebar.make({
+			title: new core.TextRenderable(ctx, {
+				content: fitText(
+					`${VIEW_ICON} ${displayText(tabLabel(target.tab))}`,
+					TITLE_WIDTH,
+				),
+				fg: theme.fg,
+				attributes: core.TextAttributes.BOLD,
+				selectable: false,
+			}),
+			onClose: closeViewer,
 		});
 
-		this._scroll = new core.ScrollBoxRenderable(ctx, {
-			flexGrow: 1,
-			scrollY: true,
-			scrollX: false,
-			contentOptions: {
-				flexDirection: "column",
-				paddingX: 1,
-				paddingTop: 1,
-			},
-			verticalScrollbarOptions: {
-				trackOptions: {
-					foregroundColor: theme.scrollbar_thumb,
-					backgroundColor: theme.scrollbar_track,
-				},
-			},
-		});
-
-		// The view never takes the focus, so the shortcuts keep working.
-		this._scroll.focusable = false;
-		this._scroll.verticalScrollBar.focusable = false;
-		this._scroll.horizontalScrollBar.focusable = false;
-
-		this.addHeader();
-		this.addFields();
-		this._component.add(this._scroll);
-		this.addFooter();
+		this._component = sidebar.root;
+		this._scroll = sidebar.scroll;
+		this._fields = this.addFields();
+		this.addFooter(sidebar.footer);
+		this.fill();
 		this.reveal(target.column);
 	}
 
@@ -206,7 +204,7 @@ export class RowViewer {
 			target: ViewerTarget | null,
 		): void => {
 			// Another row of the same rows, as the view follows the selection,
-			// only refills the fields.
+			// only refills the values.
 			if (
 				viewer &&
 				target &&
@@ -235,57 +233,31 @@ export class RowViewer {
 		return host;
 	}
 
-	private addHeader(): void {
-		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
-			borderColor: theme.border,
-			flexDirection: "row",
-			justifyContent: "space-between",
-			flexShrink: 0,
-			paddingLeft: 1,
-		});
-
-		header.add(
-			new core.TextRenderable(ctx, {
-				content: fitText(
-					`${VIEW_ICON} ${displayText(tabLabel(this._target.tab))}`,
-					TITLE_WIDTH,
-				),
-				fg: theme.fg,
-				attributes: core.TextAttributes.BOLD,
-				selectable: false,
-			}),
-		);
-		header.add(
-			IconButton.make({
-				icon: CLOSE_ICON,
-				flexShrink: 0,
-				onClick: closeViewer,
-			}),
-		);
-
-		this._component.add(header);
-	}
-
-	private addFields(): void {
+	private addFields(): ViewerField[] {
 		const { columns, kinds, meta }: GridSource = this._source;
-		const row: Value[] = this._target.rows[this._target.row] ?? [];
 
-		columns.forEach((column: string, index: number): void => {
-			const field: core.BoxRenderable = new core.BoxRenderable(ctx, {
+		return columns.map((column: string, index: number): ViewerField => {
+			const root: core.BoxRenderable = new core.BoxRenderable(ctx, {
 				id: `viewer-field-${index}`,
 				width: "100%",
 				flexDirection: "column",
 				flexShrink: 0,
 				marginBottom: 1,
 			});
-
-			const value: Value = row[index] ?? null;
 			const label: core.BoxRenderable = new core.BoxRenderable(ctx, {
 				width: "100%",
 				flexDirection: "row",
 				justifyContent: "space-between",
 			});
+			const field: ViewerField = {
+				copy: copyButton((): ViewerField => field),
+				value: new core.BoxRenderable(ctx, {
+					width: "100%",
+					flexDirection: "column",
+				}),
+				kind: kinds[index] ?? "other",
+				shown: undefined,
+			};
 
 			label.add(
 				fieldHeading({
@@ -295,32 +267,17 @@ export class RowViewer {
 					width: FIELD_WIDTH - Bun.stringWidth(COPY_LABEL) - 1,
 				}).root,
 			);
+			label.add(field.copy);
+			root.add(label);
+			root.add(field.value);
+			this._scroll.add(root);
 
-			if (value !== null) {
-				label.add(copyButton(value));
-			}
-
-			field.add(label);
-
-			for (const view of valueView(value, kinds[index] ?? "other")) {
-				field.add(view);
-			}
-
-			this._scroll.add(field);
+			return field;
 		});
 	}
 
 	// Only a table's rows can be edited.
-	private addFooter(): void {
-		const footer: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
-			borderColor: theme.border,
-			flexDirection: "row",
-			columnGap: 1,
-			flexShrink: 0,
-			paddingX: 1,
-		});
-
+	private addFooter(footer: core.BoxRenderable): void {
 		if (this._target.tab.kind === "table") {
 			footer.add(
 				Button.make({
@@ -332,40 +289,52 @@ export class RowViewer {
 			);
 		}
 
-		footer.add(new core.BoxRenderable(ctx, { flexGrow: 1 }));
+		footer.add(Sidebar.spacer());
 		footer.add(
 			Button.make({
 				label: `${CANCEL_ICON} Close`,
 				onClick: closeViewer,
 			}),
 		);
+	}
 
-		this._component.add(footer);
+	// Draws the target row's values that differ from those shown.
+	private fill(): void {
+		const row: Value[] = this._target.rows[this._target.row] ?? [];
+
+		this._fields.forEach((field: ViewerField, index: number): void => {
+			const value: Value = row[index] ?? null;
+
+			if (value === field.shown) {
+				return;
+			}
+
+			for (const view of field.value.getChildren()) {
+				view.destroyRecursively();
+			}
+
+			for (const view of valueView(value, field.kind)) {
+				field.value.add(view);
+			}
+
+			field.shown = value;
+			field.copy.visible = value !== null;
+			showCopy(field.copy, false);
+		});
 	}
 
 	// Shows another row, or the same one at another column. A new row keeps
 	// the scroll position unless it names a column.
 	private show(target: ViewerTarget): void {
 		const moved: boolean = target.row !== this._target.row;
-		const top: number = this._scroll.scrollTop;
 
 		this._target = target;
 
 		if (moved) {
-			for (const field of this._scroll.content.getChildren()) {
-				field.destroyRecursively();
-			}
-
-			this.addFields();
+			this.fill();
 		}
 
-		if (target.column !== null) {
-			this.reveal(target.column);
-		} else if (moved) {
-			this.afterLayout((): void => {
-				this._scroll.scrollTop = top;
-			});
-		}
+		this.reveal(target.column);
 	}
 
 	private reveal(column: string | null): void {
@@ -373,23 +342,9 @@ export class RowViewer {
 			column === null ? -1 : this._source.columns.indexOf(column);
 
 		if (index >= 0) {
-			this.afterLayout((): void => {
+			afterLayout(this._component, (): void => {
 				this._scroll.scrollChildIntoView(`viewer-field-${index}`);
 			});
 		}
-	}
-
-	// Runs now and after the next frame, since new fields have no layout until
-	// they have been rendered.
-	private afterLayout(action: () => void): void {
-		const run: () => void = (): void => {
-			if (!this._component.isDestroyed) {
-				action();
-			}
-		};
-
-		run();
-		ctx.once(core.CliRenderEvents.FRAME, run);
-		ctx.requestRender();
 	}
 }

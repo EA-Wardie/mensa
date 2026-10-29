@@ -15,10 +15,13 @@ import {
 	type Cell,
 	columnSpan,
 	type Grid,
+	type GridSource,
 	ICON_SPACE,
 } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
+import { $viewer, type ViewerTarget } from "../lib/store";
+import { viewRow } from "../lib/viewer";
 import { RuleScrollBar } from "./RuleScrollBar";
 
 export interface Position {
@@ -52,6 +55,8 @@ export abstract class GridView extends core.Renderable {
 	private _grid: Grid | null = null;
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
+	// A rule as wide as the grid, kept until the width changes.
+	private _rule: string = "";
 	protected _offset: Position = { x: 0, y: 0 };
 
 	constructor(options: core.RenderableOptions<GridView>) {
@@ -87,11 +92,20 @@ export abstract class GridView extends core.Renderable {
 		this.add(this._vertical);
 		this.add(this._horizontal);
 
-		unbindOnDestroy(this, (): void => {
-			if (GridView.current === this) {
-				GridView.current = null;
-			}
-		});
+		// Viewing one of these rows selects it, so the selection follows the view.
+		unbindOnDestroy(
+			this,
+			(): void => {
+				if (GridView.current === this) {
+					GridView.current = null;
+				}
+			},
+			$viewer.listen((target: ViewerTarget | null): void => {
+				if (target && target.rows === this.source()?.rows) {
+					this.selectRowAt(target.row);
+				}
+			}),
+		);
 	}
 
 	// Why there are no rows to show, such as while they load, or null.
@@ -102,6 +116,9 @@ export abstract class GridView extends core.Renderable {
 	public abstract clearSelection(): void;
 
 	protected abstract selectRowAt(row: number): void;
+
+	// The rows the grid shows, as the view and the row menu read them.
+	protected abstract source(): GridSource | null;
 
 	protected messageColor(): core.RGBA {
 		return theme.muted;
@@ -130,6 +147,34 @@ export abstract class GridView extends core.Renderable {
 
 	protected onScrolled(): void {}
 
+	// The full name of a column, which the grid's own may cut.
+	protected columnName(index: number | null): string | null {
+		return index === null ? null : (this.source()?.columns[index] ?? null);
+	}
+
+	// A click selects a row, and a double click views it at the column. While
+	// the view is open, it follows the clicked row and keeps its scroll.
+	protected clickRow(
+		row: number,
+		column: number | null,
+		double: boolean,
+	): void {
+		if (double || $viewer.get() !== null) {
+			viewRow(row, double ? this.columnName(column) : null);
+		} else {
+			this.selectRowAt(row);
+		}
+	}
+
+	// The row a menu opens on, which the view follows while it's open.
+	protected pickRow(row: number): void {
+		if ($viewer.get() !== null) {
+			viewRow(row, null);
+		} else {
+			this.selectRowAt(row);
+		}
+	}
+
 	protected get grid(): Grid | null {
 		return this._grid;
 	}
@@ -145,6 +190,14 @@ export abstract class GridView extends core.Renderable {
 	// The rows sit between the header and the bottom rule.
 	private get bodyHeight(): number {
 		return Math.max(0, this.height - HEADER_HEIGHT - 1);
+	}
+
+	// How many rows are in view.
+	private get shownRows(): number {
+		return Math.min(
+			(this._grid?.cells.length ?? 0) - this._offset.y,
+			this.bodyHeight,
+		);
 	}
 
 	// The columns scroll until the last one's separator lands on the parent's
@@ -172,9 +225,9 @@ export abstract class GridView extends core.Renderable {
 		});
 	}
 
-	// Moves the selection by step, from the top when there is none, and scrolls
-	// it into view. Gives the row it lands on, or null with no rows.
-	public stepSelection(step: number): number | null {
+	// The row step rows from the selection, or the first row when there is
+	// none, scrolled into view for whoever selects it. Null with no rows.
+	public stepRow(step: number): number | null {
 		const count: number = this._grid?.cells.length ?? 0;
 		const selected: number | null = this.selectedRow();
 
@@ -187,7 +240,6 @@ export abstract class GridView extends core.Renderable {
 		const top: number = this._offset.y;
 		const height: number = Math.max(1, this.bodyHeight);
 
-		this.selectRowAt(row);
 		this.scrollTo({
 			x: this._offset.x,
 			y: row < top ? row : row >= top + height ? row - height + 1 : top,
@@ -247,12 +299,14 @@ export abstract class GridView extends core.Renderable {
 		const width: number = Math.max(0, this.width - 2);
 		const centred: boolean = this.centresMessage();
 
+		// The footer's top border, however short the grid.
+		this.drawRule(buffer, this.bottomY);
+
 		if (width <= 0 || this.height <= 2) {
 			return;
 		}
 
 		this.drawRule(buffer, this.screenY);
-		this.drawRule(buffer, this.bottomY);
 
 		const text: string = fitText(displayText(message), width);
 		const x: number = centred
@@ -268,7 +322,11 @@ export abstract class GridView extends core.Renderable {
 	// Full width, meeting the parent's right border with a tee. The header and
 	// the rows then draw the column joins over them.
 	private drawRule(buffer: core.OptimizedBuffer, y: number): void {
-		buffer.drawText(RULE.repeat(this.width), this.screenX, y, theme.border);
+		if (this._rule.length !== this.width) {
+			this._rule = RULE.repeat(this.width);
+		}
+
+		buffer.drawText(this._rule, this.screenX, y, theme.border);
 		buffer.drawText(RIGHT_TEE, this.screenX + this.width, y, theme.border);
 	}
 
@@ -288,10 +346,7 @@ export abstract class GridView extends core.Renderable {
 	// bottom rule when the rows reach it or leave a single row above it, so
 	// two rules never touch. Null with no rows in view.
 	private rowsEndY(): number | null {
-		const shown: number = Math.min(
-			(this._grid?.cells.length ?? 0) - this._offset.y,
-			this.bodyHeight,
-		);
+		const shown: number = this.shownRows;
 
 		if (shown <= 0) {
 			return null;
@@ -397,11 +452,7 @@ export abstract class GridView extends core.Renderable {
 
 		const selected: number | null = this.selectedRow();
 
-		this.drawRowsEnd(
-			buffer,
-			grid,
-			this.screenY + HEADER_HEIGHT + end - this._offset.y,
-		);
+		this.drawRowsEnd(buffer, grid);
 
 		for (let index: number = this._offset.y; index < end; index++) {
 			const row: Cell[] | undefined = grid.cells[index];
@@ -440,11 +491,8 @@ export abstract class GridView extends core.Renderable {
 
 	// Runs the separators from under the last row down to the rule they end
 	// at, joined to it.
-	private drawRowsEnd(
-		buffer: core.OptimizedBuffer,
-		grid: Grid,
-		from: number,
-	): void {
+	private drawRowsEnd(buffer: core.OptimizedBuffer, grid: Grid): void {
+		const from: number = this.screenY + HEADER_HEIGHT + this.shownRows;
 		const end: number | null = this.rowsEndY();
 
 		if (end === null) {

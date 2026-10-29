@@ -5,6 +5,7 @@ import {
 	CHOICE_MAX_ROWS,
 	EDITOR_WIDTH,
 	INPUT_MAX_LENGTH,
+	JSON_INDENT,
 	KEY_ICON,
 	TEXTAREA_MAX_ROWS,
 	TEXTAREA_MIN_ROWS,
@@ -70,7 +71,7 @@ const READ_ONLY_LENGTH: number = 500;
 const UNEDITABLE_CHARACTERS: RegExp = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/;
 
 function prettyJson(value: string): string {
-	return isJson(value) ? reformatJson(value, "  ") : value;
+	return isJson(value) ? reformatJson(value, JSON_INDENT) : value;
 }
 
 // The rows a text takes when wrapped to the field, counted only up to the
@@ -98,7 +99,7 @@ interface HeadingOptions {
 	width: number;
 }
 
-export interface FieldHeading {
+interface FieldHeading {
 	root: core.BoxRenderable;
 	name: core.TextRenderable;
 }

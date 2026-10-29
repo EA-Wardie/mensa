@@ -56,8 +56,8 @@ function quit(): void {
 	});
 }
 
-// Moves the shown grid's selection while a row is viewed, so the view follows
-// it, and otherwise the sidebar's table.
+// Views the shown grid's next row while a row is viewed, which selects it, and
+// otherwise moves the sidebar's table.
 function stepRowOrTable(step: number): void {
 	if ($viewer.get() === null) {
 		moveSelection($tables, $selectedTable, step);
@@ -65,7 +65,7 @@ function stepRowOrTable(step: number): void {
 		return;
 	}
 
-	const row: number | null = GridView.current?.stepSelection(step) ?? null;
+	const row: number | null = GridView.current?.stepRow(step) ?? null;
 
 	if (row !== null) {
 		viewRow(row, null);

@@ -1,13 +1,6 @@
 import * as core from "@opentui/core";
 import { theme } from "../lib/config";
-import {
-	CANCEL_ICON,
-	CLOSE_ICON,
-	EDIT_ICON,
-	EDITOR_WIDTH,
-	SAVE_ICON,
-	VIEW_ICON,
-} from "../lib/consts";
+import { CANCEL_ICON, EDIT_ICON, SAVE_ICON, VIEW_ICON } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { type RowChange, updateRow } from "../lib/database";
 import {
@@ -17,7 +10,7 @@ import {
 	isSameRow,
 } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
-import { unbindOnDestroy } from "../lib/lifetime";
+import { afterLayout, unbindOnDestroy } from "../lib/lifetime";
 import {
 	$dialogOpen,
 	$editor,
@@ -31,10 +24,7 @@ import {
 import { viewRow } from "../lib/viewer";
 import { Button } from "./Button";
 import { type Field, makeField } from "./EditorField";
-import { IconButton } from "./IconButton";
-
-// The title's room, beside the close button and the dirty marker.
-const TITLE_WIDTH: number = EDITOR_WIDTH - 8;
+import { Sidebar, type SidebarParts, TITLE_WIDTH } from "./Sidebar";
 
 // A sidebar that edits one row of the active table, with a field per column.
 // Its keys are its own while it's open, so the global shortcuts pause.
@@ -45,6 +35,7 @@ export class RowEditor {
 	private _component: core.BoxRenderable;
 	private _title: core.TextRenderable;
 	private _scroll: core.ScrollBoxRenderable;
+	private _footer: core.BoxRenderable;
 	private _status: core.TextRenderable;
 	private _statusBox: core.BoxRenderable;
 	private _fields: Field[] = [];
@@ -59,15 +50,6 @@ export class RowEditor {
 		this._data = data;
 		this._readOnly = data.meta.readOnly;
 
-		this._component = new core.BoxRenderable(ctx, {
-			width: EDITOR_WIDTH,
-			height: "100%",
-			flexShrink: 0,
-			flexDirection: "column",
-			border: ["right"],
-			borderColor: theme.border,
-		});
-
 		this._title = new core.TextRenderable(ctx, {
 			content: "",
 			fg: theme.fg,
@@ -75,27 +57,16 @@ export class RowEditor {
 			selectable: false,
 		});
 
-		this._scroll = new core.ScrollBoxRenderable(ctx, {
-			flexGrow: 1,
-			scrollY: true,
-			scrollX: false,
-			contentOptions: {
-				flexDirection: "column",
-				paddingX: 1,
-				paddingTop: 1,
-			},
-			verticalScrollbarOptions: {
-				trackOptions: {
-					foregroundColor: theme.scrollbar_thumb,
-					backgroundColor: theme.scrollbar_track,
-				},
+		const sidebar: SidebarParts = Sidebar.make({
+			title: this._title,
+			onClose: (): void => {
+				this.cancel();
 			},
 		});
 
-		// Clicking around the form keeps the field's focus.
-		this._scroll.focusable = false;
-		this._scroll.verticalScrollBar.focusable = false;
-		this._scroll.horizontalScrollBar.focusable = false;
+		this._component = sidebar.root;
+		this._scroll = sidebar.scroll;
+		this._footer = sidebar.footer;
 
 		this._status = new core.TextRenderable(ctx, {
 			content: "",
@@ -111,10 +82,9 @@ export class RowEditor {
 
 		this._statusBox.add(this._status);
 
-		this.addHeader();
+		// Under the fields, above the footer.
+		this._component.add(this._statusBox, 2);
 		this.addFields();
-		this._component.add(this._scroll);
-		this._component.add(this._statusBox);
 		this.addFooter();
 		this.updateTitle();
 		this.registerEvents();
@@ -159,30 +129,6 @@ export class RowEditor {
 		return host;
 	}
 
-	private addHeader(): void {
-		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
-			borderColor: theme.border,
-			flexDirection: "row",
-			justifyContent: "space-between",
-			flexShrink: 0,
-			paddingLeft: 1,
-		});
-
-		header.add(this._title);
-		header.add(
-			IconButton.make({
-				icon: CLOSE_ICON,
-				flexShrink: 0,
-				onClick: (): void => {
-					this.cancel();
-				},
-			}),
-		);
-
-		this._component.add(header);
-	}
-
 	private addFields(): void {
 		const row: Value[] = this._data.rows[this._target.row] ?? [];
 		const primaryKey: string[] = this._data.meta.primaryKey;
@@ -225,14 +171,7 @@ export class RowEditor {
 	}
 
 	private addFooter(): void {
-		const footer: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
-			borderColor: theme.border,
-			flexDirection: "row",
-			columnGap: 1,
-			flexShrink: 0,
-			paddingX: 1,
-		});
+		const footer: core.BoxRenderable = this._footer;
 
 		// Viewing the row asks first when it has unsaved changes.
 		footer.add(
@@ -243,7 +182,7 @@ export class RowEditor {
 				},
 			}),
 		);
-		footer.add(new core.BoxRenderable(ctx, { flexGrow: 1 }));
+		footer.add(Sidebar.spacer());
 		footer.add(
 			Button.make({
 				label: `${CANCEL_ICON} ${this._readOnly === null ? "Cancel" : "Close"}`,
@@ -264,8 +203,6 @@ export class RowEditor {
 				}),
 			);
 		}
-
-		this._component.add(footer);
 	}
 
 	private registerEvents(): void {
@@ -326,18 +263,10 @@ export class RowEditor {
 		editable[next]?.control?.focus();
 	}
 
-	// Scrolls the field into view, now and after the next frame, since a new
-	// field has no layout until it has been rendered.
 	private reveal(field: Field): void {
-		const scroll: () => void = (): void => {
-			if (!this._component.isDestroyed) {
-				this._scroll.scrollChildIntoView(field.root.id);
-			}
-		};
-
-		scroll();
-		ctx.once(core.CliRenderEvents.FRAME, scroll);
-		ctx.requestRender();
+		afterLayout(this._component, (): void => {
+			this._scroll.scrollChildIntoView(field.root.id);
+		});
 	}
 
 	// In column order.

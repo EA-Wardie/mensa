@@ -10,7 +10,6 @@ import {
 	type TableData,
 	type ViewerTarget,
 } from "./store";
-import { selectRow } from "./tabs";
 
 // The rows a tab shows: a table's loaded rows, or a query's last rows.
 function tabSource(tab: Tab): GridSource | null {
@@ -35,8 +34,9 @@ export function viewerSource(target: ViewerTarget): GridSource | null {
 	return source?.rows === target.rows ? source : null;
 }
 
-// Shows a row of the active tab in the view, scrolled to the column. It
-// closes the editor first, asking when it has unsaved changes.
+// Shows a row of the active tab in the view, scrolled to the column, which
+// the grid showing it then selects. It closes the editor first, asking when it
+// has unsaved changes.
 export function viewRow(row: number, column: string | null): void {
 	const tab: Tab | null = $activeTab.get();
 	const source: GridSource | null = tab === null ? null : tabSource(tab);
@@ -53,10 +53,6 @@ export function viewRow(row: number, column: string | null): void {
 	};
 
 	confirmDiscard((): void => {
-		if (tab.kind === "table") {
-			selectRow(row, tab.table);
-		}
-
 		$viewer.set(target);
 	});
 }

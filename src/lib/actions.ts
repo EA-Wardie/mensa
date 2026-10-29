@@ -86,13 +86,13 @@ function confirmWrite(write: Write): void {
 // Copies the text, showing why it couldn't be, or else calling onCopied.
 export function copyToClipboard(
 	text: string,
-	onCopied: () => void = (): void => {},
+	onCopied?: () => void,
 ): Promise<void> {
 	return report(async (): Promise<string | null> => {
 		const error: string | null = await copyText(text);
 
 		if (error === null) {
-			onCopied();
+			onCopied?.();
 		}
 
 		return error;

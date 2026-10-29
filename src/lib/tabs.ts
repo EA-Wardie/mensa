@@ -55,10 +55,10 @@ function saveTabs(
 	}
 }
 
-// Shows a tab, loading a table the first time it is shown, or again if it
-// failed, and selecting it in the sidebar. With no tab left, or a query
-// shown, the sidebar keeps its selection.
-function activate(tab: Tab | null): void {
+// Shows a tab, loading a table the first time it is shown, again if it
+// failed, or whenever reload asks, and selecting it in the sidebar. With no
+// tab left, or a query shown, the sidebar keeps its selection.
+function activate(tab: Tab | null, reload: boolean = false): void {
 	clearNotice();
 	$activeTab.set(tab);
 
@@ -70,12 +70,12 @@ function activate(tab: Tab | null): void {
 
 	$selectedTable.set(tab.table);
 
-	if (!data || data.status === "error") {
+	if (reload || !data || data.status === "error") {
 		loadTable(tab.table);
 	}
 }
 
-export function openTable(name: string): void {
+export function openTable(name: string, reload: boolean = false): void {
 	const tabs: readonly Tab[] = $tabs.get();
 	const open: Tab | undefined = tabs.find(
 		(tab: Tab): boolean => tab.kind === "table" && tab.table === name,
@@ -86,7 +86,7 @@ export function openTable(name: string): void {
 		$tabs.set([...tabs, tab]);
 	}
 
-	activate(tab);
+	activate(tab, reload);
 	saveTabs();
 }
 
@@ -219,16 +219,9 @@ export function reloadTable(name: string): void {
 	}
 }
 
-// Shows a table, loading its rows again if it was already open. A new tab
-// loads when it is shown.
+// Shows a table, loading its rows again if it was already open.
 export function refreshTable(name: string): void {
-	const open: boolean = $openTables.get().includes(name);
-
-	openTable(name);
-
-	if (open) {
-		reloadTable(name);
-	}
+	openTable(name, true);
 }
 
 // Loads the active table again, or runs the active query again.

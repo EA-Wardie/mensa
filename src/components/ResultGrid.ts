@@ -1,13 +1,9 @@
 import type * as core from "@opentui/core";
-import { copyToClipboard } from "../lib/actions";
 import { DoubleClick } from "../lib/clicks";
-import { COPY_ICON, VIEW_ICON } from "../lib/consts";
-import { rowAsCsv, rowAsJson } from "../lib/export";
 import { plural } from "../lib/format";
-import { gridOf } from "../lib/grid";
-import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
-import { $viewer, type QueryResult, type Value } from "../lib/store";
-import { viewRow } from "../lib/viewer";
+import { type GridSource, gridOf } from "../lib/grid";
+import { copyRowItems, viewRowItem } from "../lib/rowMenu";
+import type { QueryResult } from "../lib/store";
 import { GridView } from "./GridView";
 import { Menu } from "./Menu";
 
@@ -24,6 +20,7 @@ export class ResultGrid extends GridView {
 	private _runKey: string;
 	private _onPress: () => void;
 	private _result: QueryResult | undefined = undefined;
+	private _source: GridSource | null = null;
 	private _selected: number | null = null;
 	private _clicks: DoubleClick<number> = new DoubleClick<number>();
 
@@ -40,13 +37,11 @@ export class ResultGrid extends GridView {
 
 	public show(result: QueryResult | undefined): void {
 		this._result = result;
+		this._source = result?.status === "rows" ? { ...result, meta: null } : null;
 		this._selected = null;
 		this._clicks.reset();
 
-		this.setGrid(
-			result?.status === "rows" ? gridOf({ ...result, meta: null }) : null,
-			{ x: 0, y: 0 },
-		);
+		this.setGrid(this._source ? gridOf(this._source) : null, { x: 0, y: 0 });
 	}
 
 	protected override message(): string | null {
@@ -79,69 +74,39 @@ export class ResultGrid extends GridView {
 		this.select(row);
 	}
 
+	protected override source(): GridSource | null {
+		return this._source;
+	}
+
 	protected override onPress(): void {
 		this._onPress();
 	}
 
-	// While the view is open, it follows the clicked row.
 	protected override onRowClick(
 		row: number | null,
 		column: number | null,
 	): void {
 		if (row === null) {
 			this._clicks.reset();
-
-			return;
-		}
-
-		this.select(row);
-
-		if (this._clicks.click(row) || $viewer.get() !== null) {
-			viewRow(row, column === null ? null : (this.columns()[column] ?? null));
+		} else {
+			this.clickRow(row, column, this._clicks.click(row));
 		}
 	}
 
 	protected override onRowMenu(event: core.MouseEvent, row: number): void {
-		const result: QueryResult | undefined = this._result;
+		const source: GridSource | null = this._source;
 
-		if (result?.status !== "rows") {
+		if (!source) {
 			return;
 		}
 
-		const values: Value[] = result.rows[row] ?? [];
-
-		this.select(row);
+		this.pickRow(row);
 
 		Menu.make({
 			x: event.x,
 			y: event.y,
-			items: [
-				{
-					label: `${VIEW_ICON} View`,
-					shortcut: shortcutLabel(SHORTCUTS.viewRow),
-					onSelect: (): void => {
-						viewRow(row, null);
-					},
-				},
-				"divider",
-				{
-					label: `${COPY_ICON} Copy row as CSV`,
-					onSelect: (): void => {
-						copyToClipboard(rowAsCsv(result.columns, values));
-					},
-				},
-				{
-					label: `${COPY_ICON} Copy row as JSON`,
-					onSelect: (): void => {
-						copyToClipboard(rowAsJson(result.columns, result.kinds, values));
-					},
-				},
-			],
+			items: [viewRowItem(row), "divider", ...copyRowItems(source, row)],
 		});
-	}
-
-	private columns(): string[] {
-		return this._result?.status === "rows" ? this._result.columns : [];
 	}
 
 	private select(row: number | null): void {

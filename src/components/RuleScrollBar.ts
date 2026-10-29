@@ -32,8 +32,7 @@ interface Thumb {
 // nothing while everything is in view. The thumb tints the rule's cells, which
 // keep their glyphs, so the joins show through it: faintly, and more strongly
 // while the pointer is on the bar, while it's dragged and for a moment after a
-// scroll. It's drawn once the whole frame is, so it lies over whatever later
-// renderables draw on the rule.
+// scroll. It's drawn after its owner, which draws the rule first.
 export class RuleScrollBar extends core.Renderable {
 	private _vertical: boolean;
 	private _onChange: (position: number) => void;
@@ -44,9 +43,6 @@ export class RuleScrollBar extends core.Renderable {
 	private _hovered: boolean = false;
 	private _flashing: boolean = false;
 	private _flashTimer: Timer | undefined;
-	// The thumb to draw at the end of this frame, set only while the bar is
-	// rendered, so a hidden one draws nothing.
-	private _pending: Thumb | null = null;
 
 	constructor({ orientation, onChange, ...options }: Options) {
 		super(ctx, {
@@ -57,9 +53,7 @@ export class RuleScrollBar extends core.Renderable {
 		this._vertical = orientation === "vertical";
 		this._onChange = onChange;
 
-		ctx.addPostProcessFn(this.drawThumb);
 		unbindOnDestroy(this, (): void => {
-			ctx.removePostProcessFn(this.drawThumb);
 			clearTimeout(this._flashTimer);
 		});
 	}
@@ -166,14 +160,8 @@ export class RuleScrollBar extends core.Renderable {
 		return { start, length, max };
 	}
 
-	protected override renderSelf(): void {
-		this._pending = this.thumb();
-	}
-
-	private drawThumb = (buffer: core.OptimizedBuffer): void => {
-		const thumb: Thumb | null = this._pending;
-
-		this._pending = null;
+	protected override renderSelf(buffer: core.OptimizedBuffer): void {
+		const thumb: Thumb | null = this.thumb();
 
 		if (!thumb) {
 			return;
@@ -188,7 +176,7 @@ export class RuleScrollBar extends core.Renderable {
 			this._vertical ? thumb.length : 1,
 			this.active ? ACTIVE : IDLE,
 		);
-	};
+	}
 
 	protected override onMouseEvent(event: core.MouseEvent): void {
 		switch (event.type) {
