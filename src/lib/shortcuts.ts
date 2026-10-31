@@ -9,6 +9,7 @@ import { QUIT_TIMEOUT } from "./consts";
 import { ctx } from "./context";
 import { closeClient } from "./database";
 import { confirmDiscard, editRow } from "./editor";
+import { clearMarks } from "./marks";
 import { connect, disconnect } from "./session";
 import { flushState } from "./state";
 import {
@@ -268,15 +269,23 @@ export const SHORTCUTS = {
 			}
 		},
 	},
+	markRow: {
+		key: "space",
+		description: "Mark or unmark the selected row, then select the next",
+		screen: "database",
+		run: withGrid((grid: GridView): void => grid.markSelected()),
+	},
 	clearRow: {
 		key: "escape",
-		description: "Close the row view, or clear the selected row",
+		description: "Close the row view, or clear the marks, or the selected row",
 		screen: "database",
 		run: withGrid((grid: GridView): void => {
-			if ($viewer.get() === null) {
-				grid.clearSelection();
-			} else {
+			if ($viewer.get() !== null) {
 				closeViewer();
+			} else if (grid.markedRows().length) {
+				clearMarks();
+			} else {
+				grid.clearSelection();
 			}
 		}),
 	},

@@ -19,9 +19,16 @@ import {
 } from "../lib/grid";
 import type { Icon } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
+import { clearMarks, markedIndexes, toggleMark } from "../lib/marks";
 import { clamp } from "../lib/math";
 import { copyNameItem } from "../lib/menuItems";
-import { $viewer, type ViewerTarget } from "../lib/store";
+import {
+	$markedRows,
+	$viewer,
+	type MarkedRows,
+	type Value,
+	type ViewerTarget,
+} from "../lib/store";
 import { viewRow } from "../lib/viewer";
 import { Menu } from "./Menu";
 import { RuleScrollBar } from "./RuleScrollBar";
@@ -43,6 +50,8 @@ const HEADER_HEIGHT: number = 3;
 const RULE: string = "─";
 
 const SCROLL_STEP_X: number = 4;
+
+const NO_MARKS: ReadonlySet<number> = new Set<number>();
 
 // Rows under their column names, drawing only the rows and columns in view,
 // and closed off by a rule on the last row, which is the footer's top border.
@@ -107,6 +116,9 @@ export abstract class GridView extends core.Renderable {
 					this.selectRowAt(target.row);
 				}
 			}),
+			$markedRows.listen((): void => {
+				this.requestRender();
+			}),
 		);
 	}
 
@@ -147,6 +159,15 @@ export abstract class GridView extends core.Renderable {
 
 	protected onRowMenu(_event: core.MouseEvent, _row: number): void {}
 
+	// A Ctrl+click on a row, once its mark is toggled. It picks the row and
+	// ends any double click.
+	protected onRowMark(row: number): void {
+		this.resetClicks();
+		this.pickRow(row);
+	}
+
+	protected resetClicks(): void {}
+
 	protected onScrolled(): void {}
 
 	// The full name of a column, which the grid's own may cut.
@@ -174,6 +195,30 @@ export abstract class GridView extends core.Renderable {
 			viewRow(row, null);
 		} else {
 			this.selectRowAt(row);
+		}
+	}
+
+	// The rows marked in the shown rows, in grid order.
+	public markedRows(): number[] {
+		return markedIndexes(this.source()?.rows);
+	}
+
+	// Marks or unmarks the selected row, then selects the next one, which the
+	// view follows while it's open.
+	public markSelected(): void {
+		const rows: Value[][] | undefined = this.source()?.rows;
+		const selected: number | null = this.selectedRow();
+
+		if (!rows || selected === null) {
+			return;
+		}
+
+		toggleMark(rows, selected);
+
+		const next: number | null = this.stepRow(1);
+
+		if (next !== null) {
+			this.pickRow(next);
 		}
 	}
 
@@ -398,15 +443,39 @@ export abstract class GridView extends core.Renderable {
 		);
 	}
 
-	// The hovered and selected rows, drawn before the clip.
+	// The hovered, marked and selected rows, drawn before the clip. A marked
+	// row that is selected is drawn stronger.
 	private drawHighlights(buffer: core.OptimizedBuffer, grid: Grid): void {
 		const selected: number | null = this.selectedRow();
+		const marked: ReadonlySet<number> = this.markedSet();
 
 		if (this._hovered !== selected) {
 			this.fillRow(buffer, grid, this._hovered, theme.hover);
 		}
 
-		this.fillRow(buffer, grid, selected, theme.selected);
+		for (const index of marked) {
+			if (index !== selected) {
+				this.fillRow(buffer, grid, index, theme.marked);
+			}
+		}
+
+		this.fillRow(
+			buffer,
+			grid,
+			selected,
+			selected !== null && marked.has(selected)
+				? theme.marked_selected
+				: theme.selected,
+		);
+	}
+
+	// The marks of the shown rows, read as they are for drawing.
+	private markedSet(): ReadonlySet<number> {
+		const marked: MarkedRows | null = $markedRows.get();
+
+		return marked && marked.rows === this.source()?.rows
+			? marked.indexes
+			: NO_MARKS;
 	}
 
 	private fillRow(
@@ -464,7 +533,7 @@ export abstract class GridView extends core.Renderable {
 			}
 
 			const y: number = this.screenY + HEADER_HEIGHT + index - this._offset.y;
-			const isSelected: boolean = index === selected;
+			const inverse: boolean = index === selected;
 
 			this.forEachColumn(
 				grid,
@@ -475,11 +544,7 @@ export abstract class GridView extends core.Renderable {
 						cell ?? NULL_TEXT,
 						x + CELL_PADDING,
 						y,
-						isSelected
-							? theme.fg_inverse
-							: cell === null
-								? theme.muted
-								: theme.fg,
+						inverse ? theme.fg_inverse : cell === null ? theme.muted : theme.fg,
 						undefined,
 						cell === null
 							? core.TextAttributes.ITALIC
@@ -646,12 +711,26 @@ export abstract class GridView extends core.Renderable {
 		}
 	}
 
+	// A Ctrl+click marks or unmarks a row, and any other click on a row clears
+	// the marks.
 	private handleRowDown(event: core.MouseEvent): void {
 		if (event.button !== core.MouseButton.LEFT) {
 			return;
 		}
 
 		const index: number | null = this.bodyRowAt(event);
+		const rows: Value[][] | undefined = this.source()?.rows;
+
+		if (index !== null && rows && event.modifiers.ctrl) {
+			toggleMark(rows, index);
+			this.onRowMark(index);
+
+			return;
+		}
+
+		if (index !== null) {
+			clearMarks();
+		}
 
 		this.onRowClick(index, index === null ? null : this.columnAt(event.x));
 	}

@@ -267,6 +267,15 @@ export interface ViewerTarget {
 // Set only while the editor is closed.
 export const $viewer = nanostores.atom<ViewerTarget | null>(null);
 
+// The marked rows of one grid, as indexes into rows, the array they were
+// marked in, compared by reference, so new rows show no marks.
+export interface MarkedRows {
+	rows: Value[][];
+	indexes: ReadonlySet<number>;
+}
+
+export const $markedRows = nanostores.atom<MarkedRows | null>(null);
+
 // Whether the open editor has unsaved changes.
 export const $editorDirty = nanostores.atom<boolean>(false);
 

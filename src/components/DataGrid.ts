@@ -11,7 +11,7 @@ import {
 import { confirmDiscard, editRow } from "../lib/editor";
 import { type GridSource, gridFor } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
-import { copyRowItems, viewRowItem } from "../lib/menuItems";
+import { copyMarkedItems, copyRowItems, viewRowItem } from "../lib/menuItems";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import {
 	$activeTable,
@@ -176,9 +176,7 @@ export class DataGrid extends GridView {
 			return;
 		}
 
-		if ($editor.get() === null) {
-			this.pickRow(row);
-		}
+		this.pickRow(row);
 
 		Menu.make({
 			x: event.x,
@@ -194,6 +192,7 @@ export class DataGrid extends GridView {
 				},
 				"divider",
 				...copyRowItems(data, row),
+				...copyMarkedItems(data, this.markedRows()),
 				"divider",
 				{
 					label: `${DELETE_ICON} Delete`,
@@ -204,6 +203,17 @@ export class DataGrid extends GridView {
 				},
 			],
 		});
+	}
+
+	// While the editor is open, the selection stays on its row.
+	protected override pickRow(row: number): void {
+		if ($editor.get() === null) {
+			super.pickRow(row);
+		}
+	}
+
+	protected override resetClicks(): void {
+		this._clicks.reset();
 	}
 
 	protected override onScrolled(): void {

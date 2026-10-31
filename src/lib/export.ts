@@ -27,9 +27,13 @@ function csvLine(values: Value[]): string {
 	return values.map(csvField).join(",");
 }
 
-// The column names, then the row.
+// The column names, then a line per row.
+export function rowsAsCsv(columns: string[], rows: Value[][]): string {
+	return [columns, ...rows].map(csvLine).join("\n");
+}
+
 export function rowAsCsv(columns: string[], row: Value[]): string {
-	return `${csvLine(columns)}\n${csvLine(row)}`;
+	return rowsAsCsv(columns, [row]);
 }
 
 // A value typed by its column: numbers with their digits as the database
@@ -88,4 +92,22 @@ export function rowAsJson(
 	);
 
 	return `{\n${entries.join(",\n")}\n}`;
+}
+
+// An array of the rows' objects.
+export function rowsAsJson(
+	columns: string[],
+	kinds: TypeKind[],
+	rows: Value[][],
+): string {
+	if (!rows.length) {
+		return "[]";
+	}
+
+	const objects: string[] = rows.map(
+		(row: Value[]): string =>
+			`${JSON_INDENT}${rowAsJson(columns, kinds, row).replaceAll("\n", `\n${JSON_INDENT}`)}`,
+	);
+
+	return `[\n${objects.join(",\n")}\n]`;
 }

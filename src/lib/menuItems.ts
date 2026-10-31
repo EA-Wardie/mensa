@@ -1,7 +1,7 @@
 import type { MenuItem } from "../components/Menu";
 import { copyToClipboard } from "./actions";
 import { COPY_ICON, VIEW_ICON } from "./consts";
-import { rowAsCsv, rowAsJson } from "./export";
+import { rowAsCsv, rowAsJson, rowsAsCsv, rowsAsJson } from "./export";
 import type { GridSource } from "./grid";
 import { SHORTCUTS, shortcutLabel } from "./shortcuts";
 import type { Value } from "./store";
@@ -33,6 +33,36 @@ export function copyRowItems(source: GridSource, row: number): MenuItem[] {
 			label: `${COPY_ICON} Copy row as JSON`,
 			onSelect: (): void => {
 				copyToClipboard(rowAsJson(source.columns, source.kinds, values));
+			},
+		},
+	];
+}
+
+// Copies the marked rows as they were when the menu opened, in grid order.
+// None are marked without them.
+export function copyMarkedItems(
+	source: GridSource,
+	indexes: number[],
+): MenuItem[] {
+	if (!indexes.length) {
+		return [];
+	}
+
+	const rows: Value[][] = indexes.map(
+		(index: number): Value[] => source.rows[index] ?? [],
+	);
+
+	return [
+		{
+			label: `${COPY_ICON} Copy marked as CSV`,
+			onSelect: (): void => {
+				copyToClipboard(rowsAsCsv(source.columns, rows));
+			},
+		},
+		{
+			label: `${COPY_ICON} Copy marked as JSON`,
+			onSelect: (): void => {
+				copyToClipboard(rowsAsJson(source.columns, source.kinds, rows));
 			},
 		},
 	];

@@ -57,6 +57,9 @@ export interface ThemeType {
 	// from them.
 	scrollbar: RGBA;
 	accent: RGBA;
+	// Marked grid rows, and a marked row that is also selected.
+	marked: RGBA;
+	marked_selected: RGBA;
 	success: RGBA;
 	success_pressed: RGBA;
 	danger: RGBA;
@@ -592,6 +595,8 @@ function makeTheme(config: unknown): ThemeType {
 	const syntax = (key: SyntaxKey): RGBA =>
 		syntaxColors[key] ?? parseColor(palette[key]);
 
+	const accent: RGBA = color("accent");
+
 	return {
 		bg,
 		surface: colors.surface ?? opaqueBg,
@@ -610,7 +615,9 @@ function makeTheme(config: unknown): ThemeType {
 		scrollbar_thumb: withAlpha(fg, 0.5),
 		scrollbar_track: TRANSPARENT,
 		scrollbar: colors.scrollbar ?? fg,
-		accent: color("accent"),
+		accent: accent,
+		marked: withAlpha(accent, 0.25),
+		marked_selected: withAlpha(accent, 0.75),
 		success,
 		success_pressed: withAlpha(success, 0.75),
 		danger,

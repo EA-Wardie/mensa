@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1
+
+### Added
+
+- Mark rows in table and query tabs with `Ctrl+click`, which also selects the row, or `Space`, which marks or unmarks the selected row and selects the next. Marked rows are tinted with the theme's `accent`, stronger with inverse text when also selected, and the footer counts them.
+- While rows are marked, the row menu has Copy marked as CSV, the column names and a line per row, and Copy marked as JSON, an array of the rows' objects, typed as Copy row as JSON is.
+
+### Changed
+
+- A plain click on a row clears the marks. `Escape` closes the row view, or else clears the shown grid's marks, or else the selected row.
+
+### Internal
+
+- `$markedRows` in `lib/store.ts` holds one grid's marks with the rows array they index. `lib/marks.ts` has `markedIndexes`, `toggleMark` and `clearMarks`, and clears the marks through its own `$tableData` and `$queryResults` listeners once no tab shows their rows.
+- `GridView` draws the marks with `theme.marked` and `theme.marked_selected`, takes `Ctrl+click` through `onRowMark`, which ends a double click through the subclass's `resetClicks`, and has `markSelected` for `Space` and `markedRows` for the menus and `Escape`. `DataGrid.pickRow` leaves the selection on the editor's row.
+- `rowsAsCsv` and `rowsAsJson` in `lib/export.ts`, and `copyMarkedItems` in `lib/menuItems.ts`.
+
 ## 0.3.0
 
 ### Added
