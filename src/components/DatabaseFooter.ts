@@ -2,20 +2,29 @@ import * as core from "@opentui/core";
 import { version } from "../../package.json";
 import { truncateTableNamed } from "../lib/actions";
 import { rowLimit, theme } from "../lib/config";
-import { CLOSE_ICON, REFRESH_ICON, TRUNCATE_ICON } from "../lib/consts";
+import {
+	CLOSE_ICON,
+	PRODUCTION_LABEL,
+	REFRESH_ICON,
+	TRUNCATE_ICON,
+} from "../lib/consts";
 import { ctx } from "../lib/context";
 import { plural } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
+import { marksOf } from "../lib/marks";
 import { SHORTCUTS } from "../lib/shortcuts";
 import {
 	$activeTab,
 	$activeTable,
 	$activeTableData,
+	$connection,
+	$markedRows,
 	$queryResults,
 	type QueryResult,
 	type Tab,
 	type TableData,
 } from "../lib/store";
+import { tabSource } from "../lib/viewer";
 import { IconButton } from "./IconButton";
 import { NoticeText } from "./NoticeText";
 
@@ -53,12 +62,21 @@ function describeQuery(result: QueryResult | undefined): string {
 	}
 }
 
+// The marked rows, when the tab's rows have any.
+function describeMarks(tab: Tab | null): string {
+	const count: number = marksOf(tab ? tabSource(tab)?.rows : undefined).size;
+
+	return count ? ` · ${count} marked` : "";
+}
+
 function describeActiveTab(): string {
 	const tab: Tab | null = $activeTab.get();
+	const rows: string =
+		tab?.kind === "query"
+			? describeQuery($queryResults.get()[tab.id])
+			: describeTable($activeTableData.get());
 
-	return tab?.kind === "query"
-		? describeQuery($queryResults.get()[tab.id])
-		: describeTable($activeTableData.get());
+	return `${rows}${describeMarks(tab)}`;
 }
 
 export class DatabaseFooter {
@@ -79,15 +97,22 @@ export class DatabaseFooter {
 			...this._options,
 		});
 
-		// The buttons are one box, so they stay together, and an empty box that
-		// follows its width on the right keeps the text centred. Nothing divides
-		// them from the text, so the rule above stays the grid's, joined to its
-		// columns.
+		// The buttons are one box, so they stay together, and the box on the
+		// right, which holds the production mark, is as wide as they are, so
+		// the text stays centred. The buttons' box is at least as wide as the
+		// mark. Nothing divides them from the text, so the rule above stays the
+		// grid's, joined to its columns. The screen is made for each connection,
+		// so the mark is set once.
+		const production: boolean = $connection.get()?.production ?? false;
+		const labelWidth: number = production
+			? Bun.stringWidth(PRODUCTION_LABEL) + 2
+			: 0;
 		const actions: core.BoxRenderable = new core.BoxRenderable(ctx, {
 			flexDirection: "row",
 			flexShrink: 0,
+			minWidth: labelWidth,
 			onSizeChange: (): void => {
-				spacer.width = actions.width;
+				right.width = actions.width;
 			},
 		});
 		// A query tab has no table to truncate.
@@ -101,45 +126,59 @@ export class DatabaseFooter {
 				}
 			},
 		});
-		const spacer: core.BoxRenderable = new core.BoxRenderable(ctx, {
+		const refresh: core.BoxRenderable = IconButton.make({
+			icon: REFRESH_ICON,
+			onClick: SHORTCUTS.refresh.run,
+		});
+		const close: core.BoxRenderable = IconButton.make({
+			icon: CLOSE_ICON,
+			onClick: SHORTCUTS.closeTab.run,
+		});
+		const right: core.BoxRenderable = new core.BoxRenderable(ctx, {
+			flexDirection: "row",
+			justifyContent: "flex-end",
 			flexShrink: 0,
 		});
 
-		actions.add(
-			IconButton.make({
-				icon: REFRESH_ICON,
-				onClick: SHORTCUTS.refresh.run,
-			}),
-		);
+		if (production) {
+			right.add(
+				new core.TextRenderable(ctx, {
+					content: PRODUCTION_LABEL,
+					fg: theme.danger,
+					attributes: core.TextAttributes.BOLD,
+					marginX: 1,
+					selectable: false,
+				}),
+			);
+		}
+
+		actions.add(refresh);
 		actions.add(truncate);
-		actions.add(
-			IconButton.make({
-				icon: CLOSE_ICON,
-				onClick: SHORTCUTS.closeTab.run,
-			}),
-		);
+		actions.add(close);
 
 		this._component.add(actions);
 		this._component.add(
 			NoticeText.make({
 				flexShrink: 1,
 				fallback: describeActiveTab,
-				redrawOn: [$activeTab, $activeTableData, $queryResults],
+				redrawOn: [$activeTab, $activeTableData, $queryResults, $markedRows],
 			}),
 		);
-		this._component.add(spacer);
+		this._component.add(right);
 
-		// With no tab open there is nothing to act on, so the text is centred
-		// alone, kept off the edges.
+		// With no tab open there is nothing to act on, so the buttons hide, and
+		// without the mark the text is centred alone, kept off the edges. The
+		// boxes stay, so the mark keeps the text centred.
 		unbindOnDestroy(
 			this._component,
 			$activeTab.subscribe((tab: Tab | null): void => {
-				actions.visible = tab !== null;
-				spacer.visible = tab !== null;
+				const empty: boolean = tab === null && !production;
+
+				refresh.visible = tab !== null;
 				truncate.visible = tab?.kind === "table";
-				this._component.justifyContent =
-					tab === null ? "center" : "space-between";
-				this._component.paddingX = tab === null ? 1 : 0;
+				close.visible = tab !== null;
+				this._component.justifyContent = empty ? "center" : "space-between";
+				this._component.paddingX = empty ? 1 : 0;
 			}),
 		);
 	}

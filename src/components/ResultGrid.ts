@@ -2,7 +2,7 @@ import type * as core from "@opentui/core";
 import { DoubleClick } from "../lib/clicks";
 import { plural } from "../lib/format";
 import { type GridSource, gridOf } from "../lib/grid";
-import { copyRowItems, viewRowItem } from "../lib/rowMenu";
+import { copyMarkedItems, copyRowItems, viewRowItem } from "../lib/menuItems";
 import type { QueryResult } from "../lib/store";
 import { GridView } from "./GridView";
 import { Menu } from "./Menu";
@@ -105,8 +105,17 @@ export class ResultGrid extends GridView {
 		Menu.make({
 			x: event.x,
 			y: event.y,
-			items: [viewRowItem(row), "divider", ...copyRowItems(source, row)],
+			items: [
+				viewRowItem(row),
+				"divider",
+				...copyRowItems(source, row),
+				...copyMarkedItems(source, this.marks()),
+			],
 		});
+	}
+
+	protected override resetClicks(): void {
+		this._clicks.reset();
 	}
 
 	private select(row: number | null): void {

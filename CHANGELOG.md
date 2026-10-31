@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.3.1
+
+### Added
+
+- Mark rows in table and query tabs with `Ctrl+click`, which also selects the row, or `Space`, which marks or unmarks the selected row and selects the next. Marked rows are tinted with the theme's `accent`, stronger with inverse text when also selected, and the footer counts them.
+- While rows are marked, the row menu has Copy marked as CSV, the column names and a line per row, and Copy marked as JSON, an array of the rows' objects, typed as Copy row as JSON is.
+
+### Changed
+
+- A plain click on a row clears the marks. `Escape` closes the row view, or else clears the shown grid's marks, or else the selected row.
+
+### Internal
+
+- `$markedRows` in `lib/store.ts` holds one grid's marks with the rows array they index. `lib/marks.ts` has `marksOf`, `toggleMark` and `clearMarks`, and clears the marks through its own listeners once no tab shows their rows, through `tabSource`, now exported from `lib/viewer.ts`.
+- `GridView` draws the marks with `theme.marked` and `theme.marked_selected`, takes `Ctrl+click`, ending the subclass's double click through `resetClicks`, and has `markSelected` for `Space` and `marks` for the menus and `Escape`. `DataGrid.pickRow` leaves the selection on the editor's row.
+- `rowsAsCsv` and `rowsAsJson` in `lib/export.ts`, and `copyMarkedItems` in `lib/menuItems.ts`.
+- `iconWidth` in `lib/icon.ts` gives the cells an icon and its space take, for `List`, `MenuButton` and the sidebar header.
+
+## 0.3.0
+
+### Added
+
+- The start screen shows Mensa's name in large letters above the connections, hidden when the terminal is too small for it and the list.
+- A `production` option for connections, false by default. Production connections have a red dot before their name and the others a grey one, on the start screen, in the sidebar header and in the Switch menu. The start screen and the Switch menu list the production connections last, after a divider.
+- A production connection may share its name with one that isn't. Names are still unique among the production connections, and among the rest. Messages about a production connection, such as the close confirmation, say `(production)` after its name.
+- While a production connection is open, the footer shows `[PROD]` at its right, in the `danger` colour.
+- Right clicking a column name, in a table or a query's results, opens a menu with Copy name.
+- Copy name in a table's menu in the sidebar, and in a table tab's menu.
+
+### Internal
+
+- `lib/rowMenu.ts` is now `lib/menuItems.ts`, with `copyNameItem` for the Copy name items. `GridView` opens the column name's menu itself, for both grids.
+- Saved state keeps production connections' tabs in `productionTabs`, apart from the rest's `tabs`, which keep their format, and marks a production last connection with `lastProduction`. `lastConnection()` returns the connection.
+- `connectionGroups` in `lib/config.ts` splits connections into the groups the start screen, the Switch menu and the config's order share, and `connectionLabel` adds `(production)` to a production connection's name in the connecting, failed connection and close messages.
+- `theme.muted_opaque` is `muted` blended over the background, for the grey dot, since a list draws straight into its buffer, where `muted`'s alpha is lost.
+- `Icon` in `lib/icon.ts` is the `{ icon, color }` shape that was `ColumnIcon`, now also used for connection dots.
+- `List` and `MenuItem` take an `icon`, drawn in its colour before the label. `connectionDot` in `lib/config.ts` gives a connection's dot.
+
 ## 0.2.9
 
 ### Added

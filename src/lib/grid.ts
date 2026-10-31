@@ -1,6 +1,7 @@
-import { type ColumnIcon, columnIcon, columnKind } from "./columnKinds";
+import { columnIcon, columnKind } from "./columnKinds";
 import { MAX_COLUMN_WIDTH } from "./consts";
 import { displayText, fitText, NULL_TEXT } from "./format";
+import type { Icon } from "./icon";
 import type { TableData, TableMeta, TypeKind, Value } from "./store";
 
 export type Cell = string | null;
@@ -17,7 +18,7 @@ export interface GridSource {
 // only draws them.
 export interface Grid {
 	columns: string[];
-	icons: ColumnIcon[];
+	icons: Icon[];
 	cells: Cell[][];
 	widths: number[];
 	totalWidth: number;
@@ -91,7 +92,7 @@ function makeGrid({ columns, kinds, rows, meta }: GridSource): Grid {
 			)}${mark}`;
 		}),
 		icons: columns.map(
-			(column: string, index: number): ColumnIcon =>
+			(column: string, index: number): Icon =>
 				columnIcon(columnKind(meta, column, kinds[index] ?? "other")),
 		),
 		cells: measured.map((row: Measured[], index: number): Cell[] =>

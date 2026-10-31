@@ -2,6 +2,7 @@ import * as core from "@opentui/core";
 import { theme } from "../lib/config";
 import { MENU_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
+import type { Icon } from "../lib/icon";
 import { clamp } from "../lib/math";
 import { $dialogOpen } from "../lib/store";
 import { Divider } from "./Divider";
@@ -9,6 +10,9 @@ import { MenuButton } from "./MenuButton";
 
 export interface MenuItem {
 	label: string;
+	// Drawn in its colour before the label, which may differ while the item
+	// is highlighted.
+	icon?: (highlighted: boolean) => Icon;
 	shortcut?: string;
 	danger?: boolean;
 	onSelect: () => void;

@@ -1,5 +1,4 @@
 import * as core from "@opentui/core";
-import type { ColumnIcon } from "../lib/columnKinds";
 import { theme } from "../lib/config";
 import {
 	BOTTOM_TEE,
@@ -18,10 +17,19 @@ import {
 	type GridSource,
 	ICON_SPACE,
 } from "../lib/grid";
+import type { Icon } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
+import { clearMarks, marksOf, toggleMark } from "../lib/marks";
 import { clamp } from "../lib/math";
-import { $viewer, type ViewerTarget } from "../lib/store";
+import { copyNameItem } from "../lib/menuItems";
+import {
+	$markedRows,
+	$viewer,
+	type Value,
+	type ViewerTarget,
+} from "../lib/store";
 import { viewRow } from "../lib/viewer";
+import { Menu } from "./Menu";
 import { RuleScrollBar } from "./RuleScrollBar";
 
 export interface Position {
@@ -32,7 +40,7 @@ export interface Position {
 // An icon drawn at the end of a column's name, such as its sort.
 export interface HeaderMarker {
 	index: number;
-	icon: ColumnIcon;
+	icon: Icon;
 }
 
 // The top rule, the column names and the rule under them.
@@ -105,6 +113,9 @@ export abstract class GridView extends core.Renderable {
 					this.selectRowAt(target.row);
 				}
 			}),
+			$markedRows.listen((): void => {
+				this.requestRender();
+			}),
 		);
 	}
 
@@ -145,6 +156,9 @@ export abstract class GridView extends core.Renderable {
 
 	protected onRowMenu(_event: core.MouseEvent, _row: number): void {}
 
+	// Ends a double click, such as when a Ctrl+click marks a row.
+	protected resetClicks(): void {}
+
 	protected onScrolled(): void {}
 
 	// The full name of a column, which the grid's own may cut.
@@ -172,6 +186,30 @@ export abstract class GridView extends core.Renderable {
 			viewRow(row, null);
 		} else {
 			this.selectRowAt(row);
+		}
+	}
+
+	// The marked rows of the shown rows.
+	public marks(): ReadonlySet<number> {
+		return marksOf(this.source()?.rows);
+	}
+
+	// Marks or unmarks the selected row, then selects the next one, which the
+	// view follows while it's open.
+	public markSelected(): void {
+		const rows: Value[][] | undefined = this.source()?.rows;
+		const selected: number | null = this.selectedRow();
+
+		if (!rows || selected === null) {
+			return;
+		}
+
+		toggleMark(rows, selected);
+
+		const next: number | null = this.stepRow(1);
+
+		if (next !== null) {
+			this.pickRow(next);
 		}
 	}
 
@@ -366,7 +404,7 @@ export abstract class GridView extends core.Renderable {
 		this.forEachColumn(
 			grid,
 			(index: number, x: number, separator: number): void => {
-				const icon: ColumnIcon | undefined = grid.icons[index];
+				const icon: Icon | undefined = grid.icons[index];
 
 				if (icon) {
 					buffer.drawText(icon.icon, x + CELL_PADDING, y, icon.color);
@@ -396,15 +434,32 @@ export abstract class GridView extends core.Renderable {
 		);
 	}
 
-	// The hovered and selected rows, drawn before the clip.
+	// The hovered, marked and selected rows, drawn before the clip. A marked
+	// row that is selected is drawn stronger.
 	private drawHighlights(buffer: core.OptimizedBuffer, grid: Grid): void {
 		const selected: number | null = this.selectedRow();
+		const marked: ReadonlySet<number> = this.marks();
+		const end: number = this._offset.y + this.bodyHeight;
 
 		if (this._hovered !== selected) {
 			this.fillRow(buffer, grid, this._hovered, theme.hover);
 		}
 
-		this.fillRow(buffer, grid, selected, theme.selected);
+		// Only the rows in view, however many are marked.
+		for (let index: number = this._offset.y; index < end; index++) {
+			if (index !== selected && marked.has(index)) {
+				this.fillRow(buffer, grid, index, theme.marked);
+			}
+		}
+
+		this.fillRow(
+			buffer,
+			grid,
+			selected,
+			selected !== null && marked.has(selected)
+				? theme.marked_selected
+				: theme.selected,
+		);
 	}
 
 	private fillRow(
@@ -462,7 +517,7 @@ export abstract class GridView extends core.Renderable {
 			}
 
 			const y: number = this.screenY + HEADER_HEIGHT + index - this._offset.y;
-			const isSelected: boolean = index === selected;
+			const inverse: boolean = index === selected;
 
 			this.forEachColumn(
 				grid,
@@ -473,11 +528,7 @@ export abstract class GridView extends core.Renderable {
 						cell ?? NULL_TEXT,
 						x + CELL_PADDING,
 						y,
-						isSelected
-							? theme.fg_inverse
-							: cell === null
-								? theme.muted
-								: theme.fg,
+						inverse ? theme.fg_inverse : cell === null ? theme.muted : theme.fg,
 						undefined,
 						cell === null
 							? core.TextAttributes.ITALIC
@@ -616,28 +667,55 @@ export abstract class GridView extends core.Renderable {
 		this.updateHovered();
 	}
 
+	// A left click on a column name is the subclass's, and a right click opens
+	// the name's menu.
 	private handleHeaderDown(event: core.MouseEvent): void {
-		if (
-			event.button !== core.MouseButton.LEFT ||
-			event.y !== this.screenY + 1 ||
-			this.message() !== null
-		) {
+		if (event.y !== this.screenY + 1 || this.message() !== null) {
 			return;
 		}
 
 		const index: number | null = this.columnAt(event.x);
 
-		if (index !== null) {
+		if (index === null) {
+			return;
+		}
+
+		if (event.button === core.MouseButton.LEFT) {
 			this.onHeaderClick(index);
+		} else if (event.button === core.MouseButton.RIGHT) {
+			this.showHeaderMenu(event, index);
 		}
 	}
 
+	private showHeaderMenu(event: core.MouseEvent, index: number): void {
+		const column: string | null = this.columnName(index);
+
+		if (column !== null) {
+			Menu.make({ x: event.x, y: event.y, items: [copyNameItem(column)] });
+		}
+	}
+
+	// A Ctrl+click marks or unmarks a row, and any other click on a row clears
+	// the marks.
 	private handleRowDown(event: core.MouseEvent): void {
 		if (event.button !== core.MouseButton.LEFT) {
 			return;
 		}
 
 		const index: number | null = this.bodyRowAt(event);
+		const rows: Value[][] | undefined = this.source()?.rows;
+
+		if (index !== null && rows && event.modifiers.ctrl) {
+			toggleMark(rows, index);
+			this.resetClicks();
+			this.pickRow(index);
+
+			return;
+		}
+
+		if (index !== null) {
+			clearMarks();
+		}
 
 		this.onRowClick(index, index === null ? null : this.columnAt(event.x));
 	}

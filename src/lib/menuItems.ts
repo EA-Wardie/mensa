@@ -1,7 +1,7 @@
 import type { MenuItem } from "../components/Menu";
 import { copyToClipboard } from "./actions";
 import { COPY_ICON, VIEW_ICON } from "./consts";
-import { rowAsCsv, rowAsJson } from "./export";
+import { rowAsCsv, rowAsJson, rowsAsCsv, rowsAsJson } from "./export";
 import type { GridSource } from "./grid";
 import { SHORTCUTS, shortcutLabel } from "./shortcuts";
 import type { Value } from "./store";
@@ -36,4 +36,45 @@ export function copyRowItems(source: GridSource, row: number): MenuItem[] {
 			},
 		},
 	];
+}
+
+// Copies the marked rows as they were when the menu opened, in grid order.
+// There are none without marks.
+export function copyMarkedItems(
+	source: GridSource,
+	marks: ReadonlySet<number>,
+): MenuItem[] {
+	if (!marks.size) {
+		return [];
+	}
+
+	const rows: () => Value[][] = (): Value[][] =>
+		[...marks]
+			.sort((a: number, b: number): number => a - b)
+			.map((index: number): Value[] => source.rows[index] ?? []);
+
+	return [
+		{
+			label: `${COPY_ICON} Copy marked as CSV`,
+			onSelect: (): void => {
+				copyToClipboard(rowsAsCsv(source.columns, rows()));
+			},
+		},
+		{
+			label: `${COPY_ICON} Copy marked as JSON`,
+			onSelect: (): void => {
+				copyToClipboard(rowsAsJson(source.columns, source.kinds, rows()));
+			},
+		},
+	];
+}
+
+// Copies a column's, table's or tab's name as the database gives it.
+export function copyNameItem(name: string): MenuItem {
+	return {
+		label: `${COPY_ICON} Copy name`,
+		onSelect: (): void => {
+			copyToClipboard(name);
+		},
+	};
 }

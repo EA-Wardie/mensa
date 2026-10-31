@@ -1,15 +1,10 @@
-import type { RGBA } from "@opentui/core";
 import { theme } from "./config";
 import { KEY_ICON } from "./consts";
+import type { Icon } from "./icon";
 import type { TableMeta, TypeKind } from "./store";
 
 // What a column's header icon shows: the key it's in, or else its type.
 export type ColumnKind = "primary" | "foreign" | TypeKind;
-
-export interface ColumnIcon {
-	icon: string;
-	color: RGBA;
-}
 
 const TYPE_ICONS: Record<TypeKind, string> = {
 	text: "󰊄",
@@ -50,7 +45,7 @@ export function columnKind(
 }
 
 // Keys have a yellow or a white key, and types a muted icon.
-export function columnIcon(kind: ColumnKind): ColumnIcon {
+export function columnIcon(kind: ColumnKind): Icon {
 	switch (kind) {
 		case "primary":
 			return { icon: KEY_ICON, color: theme.warning };

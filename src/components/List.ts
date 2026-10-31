@@ -4,6 +4,7 @@ import { DoubleClick } from "../lib/clicks";
 import { theme } from "../lib/config";
 import { ctx } from "../lib/context";
 import { displayText, fitText } from "../lib/format";
+import { type Icon, iconWidth } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 
@@ -11,6 +12,8 @@ interface Options<T> extends core.RenderableOptions<List<T>> {
 	items: ReadableAtom<readonly T[]>;
 	selected: WritableAtom<T | null>;
 	label: (item: T) => string;
+	// Drawn in its colour before the label.
+	icon?: (item: T, selected: boolean) => Icon;
 	detail?: (item: T) => string;
 	bold?: (item: T) => boolean;
 	redrawOn?: ReadableAtom<unknown>[];
@@ -102,19 +105,27 @@ export class List<T> extends core.Renderable {
 		width: number,
 		selected: boolean,
 	): void {
+		const icon: Icon | undefined = this._options.icon?.(item, selected);
+		const iconSpace: number = iconWidth(icon);
 		const label: string = fitText(
 			displayText(this._options.label(item)),
-			width,
+			width - iconSpace,
 		);
-		const labelWidth: number = Bun.stringWidth(label);
+		const labelX: number = this.screenX + 1 + iconSpace;
+		const labelWidth: number = iconSpace + Bun.stringWidth(label);
 		const detail: string = displayText(this._options.detail?.(item) ?? "");
 		const detailWidth: number = width - labelWidth - 2;
 		const bold: boolean = this._options.bold?.(item) ?? true;
 
 		buffer.pushScissorRect(this.screenX + 1, y, width, 1);
+
+		if (icon) {
+			buffer.drawText(icon.icon, this.screenX + 1, y, icon.color);
+		}
+
 		buffer.drawText(
 			label,
-			this.screenX + 1,
+			labelX,
 			y,
 			selected ? theme.fg_inverse : theme.fg,
 			undefined,
