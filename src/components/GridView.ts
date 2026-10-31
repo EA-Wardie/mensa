@@ -19,13 +19,12 @@ import {
 } from "../lib/grid";
 import type { Icon } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
-import { clearMarks, markedIndexes, toggleMark } from "../lib/marks";
+import { clearMarks, marksOf, toggleMark } from "../lib/marks";
 import { clamp } from "../lib/math";
 import { copyNameItem } from "../lib/menuItems";
 import {
 	$markedRows,
 	$viewer,
-	type MarkedRows,
 	type Value,
 	type ViewerTarget,
 } from "../lib/store";
@@ -50,8 +49,6 @@ const HEADER_HEIGHT: number = 3;
 const RULE: string = "─";
 
 const SCROLL_STEP_X: number = 4;
-
-const NO_MARKS: ReadonlySet<number> = new Set<number>();
 
 // Rows under their column names, drawing only the rows and columns in view,
 // and closed off by a rule on the last row, which is the footer's top border.
@@ -159,13 +156,7 @@ export abstract class GridView extends core.Renderable {
 
 	protected onRowMenu(_event: core.MouseEvent, _row: number): void {}
 
-	// A Ctrl+click on a row, once its mark is toggled. It picks the row and
-	// ends any double click.
-	protected onRowMark(row: number): void {
-		this.resetClicks();
-		this.pickRow(row);
-	}
-
+	// Ends a double click, such as when a Ctrl+click marks a row.
 	protected resetClicks(): void {}
 
 	protected onScrolled(): void {}
@@ -198,9 +189,9 @@ export abstract class GridView extends core.Renderable {
 		}
 	}
 
-	// The rows marked in the shown rows, in grid order.
-	public markedRows(): number[] {
-		return markedIndexes(this.source()?.rows);
+	// The marked rows of the shown rows.
+	public marks(): ReadonlySet<number> {
+		return marksOf(this.source()?.rows);
 	}
 
 	// Marks or unmarks the selected row, then selects the next one, which the
@@ -447,14 +438,16 @@ export abstract class GridView extends core.Renderable {
 	// row that is selected is drawn stronger.
 	private drawHighlights(buffer: core.OptimizedBuffer, grid: Grid): void {
 		const selected: number | null = this.selectedRow();
-		const marked: ReadonlySet<number> = this.markedSet();
+		const marked: ReadonlySet<number> = this.marks();
+		const end: number = this._offset.y + this.bodyHeight;
 
 		if (this._hovered !== selected) {
 			this.fillRow(buffer, grid, this._hovered, theme.hover);
 		}
 
-		for (const index of marked) {
-			if (index !== selected) {
+		// Only the rows in view, however many are marked.
+		for (let index: number = this._offset.y; index < end; index++) {
+			if (index !== selected && marked.has(index)) {
 				this.fillRow(buffer, grid, index, theme.marked);
 			}
 		}
@@ -467,15 +460,6 @@ export abstract class GridView extends core.Renderable {
 				? theme.marked_selected
 				: theme.selected,
 		);
-	}
-
-	// The marks of the shown rows, read as they are for drawing.
-	private markedSet(): ReadonlySet<number> {
-		const marked: MarkedRows | null = $markedRows.get();
-
-		return marked && marked.rows === this.source()?.rows
-			? marked.indexes
-			: NO_MARKS;
 	}
 
 	private fillRow(
@@ -723,7 +707,8 @@ export abstract class GridView extends core.Renderable {
 
 		if (index !== null && rows && event.modifiers.ctrl) {
 			toggleMark(rows, index);
-			this.onRowMark(index);
+			this.resetClicks();
+			this.pickRow(index);
 
 			return;
 		}

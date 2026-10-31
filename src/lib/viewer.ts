@@ -12,7 +12,7 @@ import {
 } from "./store";
 
 // The rows a tab shows: a table's loaded rows, or a query's last rows.
-function tabSource(tab: Tab): GridSource | null {
+export function tabSource(tab: Tab): GridSource | null {
 	if (tab.kind === "table") {
 		const data: TableData | undefined = $tableData.get()[tab.table];
 

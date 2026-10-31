@@ -2,30 +2,25 @@ import {
 	$markedRows,
 	$queryResults,
 	$tableData,
+	$tabs,
 	type MarkedRows,
-	type QueryResult,
-	type TableData,
+	type Tab,
 	type Value,
 } from "./store";
+import { tabSource } from "./viewer";
 
-// The rows marked in rows, in grid order, or none when the marks belong to
-// other rows.
-export function markedIndexes(rows: Value[][] | undefined): number[] {
+const NO_MARKS: ReadonlySet<number> = new Set<number>();
+
+// The rows marked in rows, or none when the marks belong to other rows.
+export function marksOf(rows: Value[][] | undefined): ReadonlySet<number> {
 	const marked: MarkedRows | null = $markedRows.get();
 
-	if (!marked || marked.rows !== rows) {
-		return [];
-	}
-
-	return [...marked.indexes].sort((a: number, b: number): number => a - b);
+	return marked && marked.rows === rows ? marked.indexes : NO_MARKS;
 }
 
 // Marking a row of other rows starts again from it.
 export function toggleMark(rows: Value[][], row: number): void {
-	const marked: MarkedRows | null = $markedRows.get();
-	const indexes: Set<number> = new Set<number>(
-		marked?.rows === rows ? marked.indexes : [],
-	);
+	const indexes: Set<number> = new Set<number>(marksOf(rows));
 
 	if (!indexes.delete(row)) {
 		indexes.add(row);
@@ -35,23 +30,7 @@ export function toggleMark(rows: Value[][], row: number): void {
 }
 
 export function clearMarks(): void {
-	if ($markedRows.get() !== null) {
-		$markedRows.set(null);
-	}
-}
-
-// Whether a table's loaded rows or a query's last rows are still rows.
-function isShown(rows: Value[][]): boolean {
-	return (
-		Object.values($tableData.get()).some(
-			(data: TableData): boolean =>
-				data.status === "loaded" && data.rows === rows,
-		) ||
-		Object.values($queryResults.get()).some(
-			(result: QueryResult): boolean =>
-				result.status === "rows" && result.rows === rows,
-		)
-	);
+	$markedRows.set(null);
 }
 
 // The marks go once their rows are replaced, such as by a reload, sort, save
@@ -59,10 +38,16 @@ function isShown(rows: Value[][]): boolean {
 function clearIfStale(): void {
 	const marked: MarkedRows | null = $markedRows.get();
 
-	if (marked && !isShown(marked.rows)) {
+	if (
+		marked &&
+		!$tabs
+			.get()
+			.some((tab: Tab): boolean => tabSource(tab)?.rows === marked.rows)
+	) {
 		clearMarks();
 	}
 }
 
+$tabs.listen(clearIfStale);
 $tableData.listen(clearIfStale);
 $queryResults.listen(clearIfStale);

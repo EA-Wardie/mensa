@@ -158,7 +158,6 @@ export function flushState(): Promise<unknown> {
 	return pending;
 }
 
-// The last connection, while it's still in the config.
 // The saved tabs of the connection's group.
 function groupTabs(connection: ConnectionConfig): Record<string, TabsState> {
 	return connection.production ? state.productionTabs : state.tabs;

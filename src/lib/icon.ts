@@ -6,3 +6,8 @@ export interface Icon {
 	icon: string;
 	color: RGBA;
 }
+
+// The cells an icon takes before a label: the icon and a space, or none.
+export function iconWidth(icon: Icon | null | undefined): number {
+	return icon ? Bun.stringWidth(icon.icon) + 1 : 0;
+}

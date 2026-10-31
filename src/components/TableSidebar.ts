@@ -27,7 +27,7 @@ import {
 import { ctx } from "../lib/context";
 import { confirmDiscard, confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
-import type { Icon } from "../lib/icon";
+import { type Icon, iconWidth } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { copyNameItem } from "../lib/menuItems";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
@@ -132,7 +132,7 @@ export class TableSidebar {
 			new core.TextRenderable(ctx, {
 				content: fitText(
 					`${DATABASE_ICON} ${displayText(connection?.name ?? "")}`,
-					SIDEBAR_WIDTH - 8 - (dot ? Bun.stringWidth(dot.icon) + 1 : 0),
+					SIDEBAR_WIDTH - 8 - iconWidth(dot),
 				),
 				fg: theme.fg,
 				attributes: core.TextAttributes.BOLD,

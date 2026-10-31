@@ -109,7 +109,7 @@ export class ResultGrid extends GridView {
 				viewRowItem(row),
 				"divider",
 				...copyRowItems(source, row),
-				...copyMarkedItems(source, this.markedRows()),
+				...copyMarkedItems(source, this.marks()),
 			],
 		});
 	}

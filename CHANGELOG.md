@@ -13,9 +13,10 @@
 
 ### Internal
 
-- `$markedRows` in `lib/store.ts` holds one grid's marks with the rows array they index. `lib/marks.ts` has `markedIndexes`, `toggleMark` and `clearMarks`, and clears the marks through its own `$tableData` and `$queryResults` listeners once no tab shows their rows.
-- `GridView` draws the marks with `theme.marked` and `theme.marked_selected`, takes `Ctrl+click` through `onRowMark`, which ends a double click through the subclass's `resetClicks`, and has `markSelected` for `Space` and `markedRows` for the menus and `Escape`. `DataGrid.pickRow` leaves the selection on the editor's row.
+- `$markedRows` in `lib/store.ts` holds one grid's marks with the rows array they index. `lib/marks.ts` has `marksOf`, `toggleMark` and `clearMarks`, and clears the marks through its own listeners once no tab shows their rows, through `tabSource`, now exported from `lib/viewer.ts`.
+- `GridView` draws the marks with `theme.marked` and `theme.marked_selected`, takes `Ctrl+click`, ending the subclass's double click through `resetClicks`, and has `markSelected` for `Space` and `marks` for the menus and `Escape`. `DataGrid.pickRow` leaves the selection on the editor's row.
 - `rowsAsCsv` and `rowsAsJson` in `lib/export.ts`, and `copyMarkedItems` in `lib/menuItems.ts`.
+- `iconWidth` in `lib/icon.ts` gives the cells an icon and its space take, for `List`, `MenuButton` and the sidebar header.
 
 ## 0.3.0
 

@@ -282,7 +282,7 @@ export const SHORTCUTS = {
 		run: withGrid((grid: GridView): void => {
 			if ($viewer.get() !== null) {
 				closeViewer();
-			} else if (grid.markedRows().length) {
+			} else if (grid.marks().size) {
 				clearMarks();
 			} else {
 				grid.clearSelection();

@@ -192,7 +192,7 @@ export class DataGrid extends GridView {
 				},
 				"divider",
 				...copyRowItems(data, row),
-				...copyMarkedItems(data, this.markedRows()),
+				...copyMarkedItems(data, this.marks()),
 				"divider",
 				{
 					label: `${DELETE_ICON} Delete`,

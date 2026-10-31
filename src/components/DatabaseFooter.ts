@@ -11,7 +11,7 @@ import {
 import { ctx } from "../lib/context";
 import { plural } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
-import { markedIndexes } from "../lib/marks";
+import { marksOf } from "../lib/marks";
 import { SHORTCUTS } from "../lib/shortcuts";
 import {
 	$activeTab,
@@ -23,8 +23,8 @@ import {
 	type QueryResult,
 	type Tab,
 	type TableData,
-	type Value,
 } from "../lib/store";
+import { tabSource } from "../lib/viewer";
 import { IconButton } from "./IconButton";
 import { NoticeText } from "./NoticeText";
 
@@ -62,25 +62,21 @@ function describeQuery(result: QueryResult | undefined): string {
 	}
 }
 
-// The marked rows, when the active tab's rows have any.
-function describeMarks(rows: Value[][] | undefined): string {
-	const count: number = markedIndexes(rows).length;
+// The marked rows, when the tab's rows have any.
+function describeMarks(tab: Tab | null): string {
+	const count: number = marksOf(tab ? tabSource(tab)?.rows : undefined).size;
 
 	return count ? ` · ${count} marked` : "";
 }
 
 function describeActiveTab(): string {
 	const tab: Tab | null = $activeTab.get();
+	const rows: string =
+		tab?.kind === "query"
+			? describeQuery($queryResults.get()[tab.id])
+			: describeTable($activeTableData.get());
 
-	if (tab?.kind === "query") {
-		const result: QueryResult | undefined = $queryResults.get()[tab.id];
-
-		return `${describeQuery(result)}${describeMarks(result?.status === "rows" ? result.rows : undefined)}`;
-	}
-
-	const data: TableData | undefined = $activeTableData.get();
-
-	return `${describeTable(data)}${describeMarks(data?.status === "loaded" ? data.rows : undefined)}`;
+	return `${rows}${describeMarks(tab)}`;
 }
 
 export class DatabaseFooter {

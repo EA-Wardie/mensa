@@ -4,7 +4,7 @@ import { DoubleClick } from "../lib/clicks";
 import { theme } from "../lib/config";
 import { ctx } from "../lib/context";
 import { displayText, fitText } from "../lib/format";
-import type { Icon } from "../lib/icon";
+import { type Icon, iconWidth } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
 
@@ -106,14 +106,13 @@ export class List<T> extends core.Renderable {
 		selected: boolean,
 	): void {
 		const icon: Icon | undefined = this._options.icon?.(item, selected);
-		// The icon and a space.
-		const iconWidth: number = icon ? Bun.stringWidth(icon.icon) + 1 : 0;
+		const iconSpace: number = iconWidth(icon);
 		const label: string = fitText(
 			displayText(this._options.label(item)),
-			width - iconWidth,
+			width - iconSpace,
 		);
-		const labelX: number = this.screenX + 1 + iconWidth;
-		const labelWidth: number = iconWidth + Bun.stringWidth(label);
+		const labelX: number = this.screenX + 1 + iconSpace;
+		const labelWidth: number = iconSpace + Bun.stringWidth(label);
 		const detail: string = displayText(this._options.detail?.(item) ?? "");
 		const detailWidth: number = width - labelWidth - 2;
 		const bold: boolean = this._options.bold?.(item) ?? true;

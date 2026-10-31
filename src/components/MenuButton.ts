@@ -3,7 +3,7 @@ import { theme } from "../lib/config";
 import { MENU_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { displayText, fitText } from "../lib/format";
-import type { Icon } from "../lib/icon";
+import { type Icon, iconWidth } from "../lib/icon";
 
 interface Options extends core.BoxOptions {
 	label: string;
@@ -86,8 +86,7 @@ export class MenuButton {
 			? Bun.stringWidth(this._options.shortcut) + 1
 			: 0;
 		const icon: Icon | undefined = this._options.icon?.(false);
-		// The icon and a space.
-		const iconWidth: number = icon ? Bun.stringWidth(icon.icon) + 1 : 0;
+		const iconSpace: number = iconWidth(icon);
 		const start: core.BoxRenderable = new core.BoxRenderable(ctx, {
 			flexDirection: "row",
 			gap: 1,
@@ -106,7 +105,7 @@ export class MenuButton {
 		const label: core.TextRenderable = new core.TextRenderable(ctx, {
 			content: fitText(
 				displayText(this._options.label),
-				LABEL_WIDTH - shortcutWidth - iconWidth,
+				LABEL_WIDTH - shortcutWidth - iconSpace,
 			),
 			fg: this.labelColor(),
 			attributes: core.TextAttributes.BOLD,

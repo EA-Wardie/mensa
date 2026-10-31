@@ -39,30 +39,31 @@ export function copyRowItems(source: GridSource, row: number): MenuItem[] {
 }
 
 // Copies the marked rows as they were when the menu opened, in grid order.
-// None are marked without them.
+// There are none without marks.
 export function copyMarkedItems(
 	source: GridSource,
-	indexes: number[],
+	marks: ReadonlySet<number>,
 ): MenuItem[] {
-	if (!indexes.length) {
+	if (!marks.size) {
 		return [];
 	}
 
-	const rows: Value[][] = indexes.map(
-		(index: number): Value[] => source.rows[index] ?? [],
-	);
+	const rows: () => Value[][] = (): Value[][] =>
+		[...marks]
+			.sort((a: number, b: number): number => a - b)
+			.map((index: number): Value[] => source.rows[index] ?? []);
 
 	return [
 		{
 			label: `${COPY_ICON} Copy marked as CSV`,
 			onSelect: (): void => {
-				copyToClipboard(rowsAsCsv(source.columns, rows));
+				copyToClipboard(rowsAsCsv(source.columns, rows()));
 			},
 		},
 		{
 			label: `${COPY_ICON} Copy marked as JSON`,
 			onSelect: (): void => {
-				copyToClipboard(rowsAsJson(source.columns, source.kinds, rows));
+				copyToClipboard(rowsAsJson(source.columns, source.kinds, rows()));
 			},
 		},
 	];
