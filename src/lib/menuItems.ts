@@ -37,3 +37,13 @@ export function copyRowItems(source: GridSource, row: number): MenuItem[] {
 		},
 	];
 }
+
+// Copies a column's, table's or tab's name as the database gives it.
+export function copyNameItem(name: string): MenuItem {
+	return {
+		label: `${COPY_ICON} Copy name`,
+		onSelect: (): void => {
+			copyToClipboard(name);
+		},
+	};
+}

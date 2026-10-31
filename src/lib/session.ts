@@ -1,4 +1,4 @@
-import type { ConnectionConfig } from "./config";
+import { type ConnectionConfig, connectionLabel } from "./config";
 import { closeClient, type OpenedClient, openClient } from "./database";
 import { errorMessage } from "./format";
 import { logError } from "./log";
@@ -31,7 +31,7 @@ export async function connect(connection: ConnectionConfig): Promise<void> {
 	} catch (error) {
 		logError(error);
 		$notice.set(
-			`Could not connect to ${connection.name}: ${errorMessage(error)}`,
+			`Could not connect to ${connectionLabel(connection)}: ${errorMessage(error)}`,
 		);
 	} finally {
 		$connecting.set(null);
@@ -45,7 +45,7 @@ export async function connect(connection: ConnectionConfig): Promise<void> {
 	$tables.set(opened.tables);
 	$selectedTable.set(opened.tables[0] ?? null);
 	$connection.set(connection);
-	rememberConnection(connection.name);
+	rememberConnection(connection);
 	restoreTabs(connection);
 	$screen.set("database");
 	$notice.set(opened.tablesError);

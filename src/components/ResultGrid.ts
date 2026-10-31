@@ -2,7 +2,7 @@ import type * as core from "@opentui/core";
 import { DoubleClick } from "../lib/clicks";
 import { plural } from "../lib/format";
 import { type GridSource, gridOf } from "../lib/grid";
-import { copyRowItems, viewRowItem } from "../lib/rowMenu";
+import { copyRowItems, viewRowItem } from "../lib/menuItems";
 import type { QueryResult } from "../lib/store";
 import { GridView } from "./GridView";
 import { Menu } from "./Menu";

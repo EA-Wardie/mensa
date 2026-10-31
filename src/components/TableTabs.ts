@@ -7,6 +7,7 @@ import { confirmDiscard } from "../lib/editor";
 import { displayText } from "../lib/format";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
+import { copyNameItem } from "../lib/menuItems";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import { $activeTab, $tabs, type Tab } from "../lib/store";
 import { newQuery, showTab, tabLabel } from "../lib/tabs";
@@ -350,7 +351,7 @@ class TabBar extends core.Renderable {
 	}
 
 	// Right clicking a tab shows it first, which may ask to discard the edited
-	// row, and then opens the menu.
+	// row, and then opens the menu. A table's tab can copy its name.
 	private handleMenu(event: core.MouseEvent, hit: Hit | null): void {
 		const tab: Tab | null = hit?.tab ?? null;
 
@@ -363,6 +364,9 @@ class TabBar extends core.Renderable {
 				x: event.x,
 				y: event.y,
 				items: [
+					...(tab.kind === "table"
+						? [copyNameItem(tab.table), "divider" as const]
+						: []),
 					{
 						label: `${CLOSE_ICON} Close`,
 						shortcut: shortcutLabel(SHORTCUTS.closeTab),

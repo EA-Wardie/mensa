@@ -6,8 +6,12 @@ import {
 	truncateAllTables,
 	truncateTableNamed,
 } from "../lib/actions";
-import type { ConnectionConfig } from "../lib/config";
-import { theme } from "../lib/config";
+import {
+	type ConnectionConfig,
+	connectionDot,
+	connectionGroups,
+	theme,
+} from "../lib/config";
 import {
 	APP_TITLE,
 	CLOSE_ICON,
@@ -23,7 +27,9 @@ import {
 import { ctx } from "../lib/context";
 import { confirmDiscard, confirmDiscardIf } from "../lib/editor";
 import { displayText, fitText } from "../lib/format";
+import type { Icon } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
+import { copyNameItem } from "../lib/menuItems";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import {
 	$activeTable,
@@ -38,7 +44,7 @@ import { newQuery, openTable, refreshTable } from "../lib/tabs";
 import { Divider } from "./Divider";
 import { IconButton } from "./IconButton";
 import { List } from "./List";
-import { Menu, type MenuItem } from "./Menu";
+import { Menu, type MenuEntry, type MenuItem } from "./Menu";
 import { Message } from "./Message";
 
 export class TableSidebar {
@@ -103,19 +109,37 @@ export class TableSidebar {
 			},
 		});
 
-		// The name leaves room for the sidebar's borders, the padding, a gap, the
-		// divider and the menu button.
-		header.add(
+		const connection: ConnectionConfig | null = $connection.get();
+		const dot: Icon | null = connection ? connectionDot(connection) : null;
+		const title: core.BoxRenderable = new core.BoxRenderable(ctx, {
+			flexDirection: "row",
+			gap: 1,
+		});
+
+		if (dot) {
+			title.add(
+				new core.TextRenderable(ctx, {
+					content: dot.icon,
+					fg: dot.color,
+					selectable: false,
+				}),
+			);
+		}
+
+		// The name leaves room for the sidebar's borders, the padding, the dot
+		// and its gap, a gap, the divider and the menu button.
+		title.add(
 			new core.TextRenderable(ctx, {
 				content: fitText(
-					`${DATABASE_ICON} ${displayText($connection.get()?.name ?? "")}`,
-					SIDEBAR_WIDTH - 8,
+					`${DATABASE_ICON} ${displayText(connection?.name ?? "")}`,
+					SIDEBAR_WIDTH - 8 - (dot ? Bun.stringWidth(dot.icon) + 1 : 0),
 				),
 				fg: theme.fg,
 				attributes: core.TextAttributes.BOLD,
 				selectable: false,
 			}),
 		);
+		header.add(title);
 
 		const buttons: core.BoxRenderable = new core.BoxRenderable(ctx, {
 			flexDirection: "row",
@@ -194,6 +218,7 @@ export class TableSidebar {
 						confirmDiscard((): void => refreshTable(table));
 					},
 				},
+				copyNameItem(table),
 				"divider",
 				{
 					label: `${TRUNCATE_ICON} Truncate`,
@@ -269,6 +294,7 @@ export class TableSidebar {
 		});
 	}
 
+	// A divider splits the production connections from the rest.
 	private showConnectionsMenu(
 		connections: ConnectionConfig[],
 		x: number,
@@ -277,13 +303,20 @@ export class TableSidebar {
 		Menu.make({
 			x: x,
 			y: y,
-			items: connections.map(
-				(connection: ConnectionConfig): MenuItem => ({
-					label: `${DATABASE_ICON} ${connection.name}`,
-					onSelect: (): void => {
-						switchTo(connection);
-					},
-				}),
+			items: connectionGroups(connections).flatMap(
+				(group: ConnectionConfig[], index: number): MenuEntry[] => [
+					...(index > 0 ? ["divider" as const] : []),
+					...group.map(
+						(connection: ConnectionConfig): MenuItem => ({
+							label: `${DATABASE_ICON} ${connection.name}`,
+							icon: (highlighted: boolean): Icon =>
+								connectionDot(connection, highlighted),
+							onSelect: (): void => {
+								switchTo(connection);
+							},
+						}),
+					),
+				],
 			),
 		});
 	}

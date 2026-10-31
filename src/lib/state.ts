@@ -17,9 +17,14 @@ export interface TabsState {
 	active: number | null;
 }
 
+// Connections are saved by name, with production ones apart, since one may
+// share its name with a connection that isn't.
 interface State {
 	lastConnection?: string;
+	// Set only when the last connection is production.
+	lastProduction?: true;
 	tabs: Record<string, TabsState>;
+	productionTabs: Record<string, TabsState>;
 }
 
 // A query's id is its number, which its tab shows.
@@ -53,48 +58,71 @@ function parseActive(open: SavedTab[], active: unknown): number | null {
 		: null;
 }
 
-// Keeps the tabs of connections that are still in the config.
-function parseTabs(value: unknown): Record<string, TabsState> {
+// Keeps the tabs of the group's connections that are still in the config.
+function parseTabs(
+	value: unknown,
+	production: boolean,
+): Record<string, TabsState> {
 	const tabs: Record<string, TabsState> = {};
 
 	if (!isTable(value)) {
 		return tabs;
 	}
 
-	for (const { name } of connections) {
-		const entry: unknown = value[name];
+	for (const connection of connections) {
+		const entry: unknown =
+			connection.production === production ? value[connection.name] : null;
 		const { open, active }: Record<string, unknown> = isTable(entry)
 			? entry
 			: {};
 
 		if (isSavedTabs(open)) {
-			tabs[name] = { open: open, active: parseActive(open, active) };
+			tabs[connection.name] = {
+				open: open,
+				active: parseActive(open, active),
+			};
 		}
 	}
 
 	return tabs;
 }
 
+function emptyState(): State {
+	return { tabs: {}, productionTabs: {} };
+}
+
 async function loadState(): Promise<State> {
 	const file: Bun.BunFile = Bun.file(STATE_PATH);
 
 	if (!(await file.exists())) {
-		return { tabs: {} };
+		return emptyState();
 	}
 
 	try {
-		const { lastConnection, tabs }: Record<string, unknown> = await file.json();
-		const state: State = { tabs: parseTabs(tabs) };
+		const {
+			lastConnection,
+			lastProduction,
+			tabs,
+			productionTabs,
+		}: Record<string, unknown> = await file.json();
+		const state: State = {
+			tabs: parseTabs(tabs, false),
+			productionTabs: parseTabs(productionTabs, true),
+		};
 
 		if (typeof lastConnection === "string") {
 			state.lastConnection = lastConnection;
+		}
+
+		if (lastProduction === true) {
+			state.lastProduction = true;
 		}
 
 		return state;
 	} catch (error) {
 		logError(error);
 
-		return { tabs: {} };
+		return emptyState();
 	}
 }
 
@@ -130,39 +158,58 @@ export function flushState(): Promise<unknown> {
 	return pending;
 }
 
-export function lastConnection(): string | null {
-	return state.lastConnection ?? null;
+// The last connection, while it's still in the config.
+// The saved tabs of the connection's group.
+function groupTabs(connection: ConnectionConfig): Record<string, TabsState> {
+	return connection.production ? state.productionTabs : state.tabs;
 }
 
-export function rememberConnection(name: string | null): void {
-	if ((state.lastConnection ?? null) === name) {
+function isLast(connection: ConnectionConfig | null): boolean {
+	return (
+		(state.lastConnection ?? null) === (connection?.name ?? null) &&
+		(state.lastProduction ?? false) === (connection?.production ?? false)
+	);
+}
+
+// The last connection, while it's still in the config.
+export function lastConnection(): ConnectionConfig | null {
+	return connections.find(isLast) ?? null;
+}
+
+export function rememberConnection(connection: ConnectionConfig | null): void {
+	if (isLast(connection)) {
 		return;
 	}
 
-	if (name === null) {
-		delete state.lastConnection;
-	} else {
-		state.lastConnection = name;
+	delete state.lastConnection;
+	delete state.lastProduction;
+
+	if (connection) {
+		state.lastConnection = connection.name;
+
+		if (connection.production) {
+			state.lastProduction = true;
+		}
 	}
 
 	saveState();
 }
 
 export function rememberedTabs(connection: ConnectionConfig): TabsState | null {
-	return state.tabs[connection.name] ?? null;
+	return groupTabs(connection)[connection.name] ?? null;
 }
 
 export function rememberTabs(
 	connection: ConnectionConfig,
 	tabs: TabsState,
 ): void {
-	const saved: TabsState | undefined = state.tabs[connection.name];
+	const group: Record<string, TabsState> = groupTabs(connection);
 
-	if (Bun.deepEquals(saved, tabs)) {
+	if (Bun.deepEquals(group[connection.name], tabs)) {
 		return;
 	}
 
-	state.tabs[connection.name] = tabs;
+	group[connection.name] = tabs;
 
 	saveState();
 }

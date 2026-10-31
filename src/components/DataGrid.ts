@@ -11,7 +11,7 @@ import {
 import { confirmDiscard, editRow } from "../lib/editor";
 import { type GridSource, gridFor } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
-import { copyRowItems, viewRowItem } from "../lib/rowMenu";
+import { copyRowItems, viewRowItem } from "../lib/menuItems";
 import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import {
 	$activeTable,

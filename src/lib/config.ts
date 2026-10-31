@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { parseColor, RGBA } from "@opentui/core";
 import {
+	CONNECTION_DOT,
 	DEFAULT_DOUBLE_CLICK_TIMEOUT,
 	DEFAULT_MYSQL_PORT,
 	DEFAULT_POSTGRES_PORT,
@@ -9,6 +10,7 @@ import {
 	MAX_PORT,
 	USER_CONFIG_PATH,
 } from "./consts";
+import type { Icon } from "./icon";
 import { logError, setLogsPath } from "./log";
 
 const THEME_KEYS = [
@@ -38,6 +40,9 @@ export interface ThemeType {
 	fg: RGBA;
 	fg_inverse: RGBA;
 	muted: RGBA;
+	// muted blended over the background, for what's drawn straight into a
+	// buffer, where the alpha would otherwise be lost.
+	muted_opaque: RGBA;
 	border: RGBA;
 	hover: RGBA;
 	selected: RGBA;
@@ -104,6 +109,8 @@ export interface ConnectionConfig {
 	// MySQL only. Lets the client fetch the server's key to send a password
 	// without TLS, which a network attacker could replace with their own.
 	allowPublicKeyRetrieval?: boolean;
+	// Marked with a red dot and listed after the other connections.
+	production: boolean;
 }
 
 interface ConfigFile {
@@ -227,6 +234,7 @@ function parseConnection(
 	const driver: unknown = value.driver ?? urlDriver(url);
 	const ssl: unknown = value.ssl;
 	const allowPublicKeyRetrieval: unknown = value.allow_public_key_retrieval;
+	const production: unknown = value.production ?? false;
 
 	if (!name) {
 		logError(new Error(`Connection #${index + 1} has no name`));
@@ -294,7 +302,19 @@ function parseConnection(
 		return undefined;
 	}
 
-	const connection: ConnectionConfig = { name: name, driver: driver };
+	if (typeof production !== "boolean") {
+		logError(
+			new Error(`Invalid production for "${name}": ${String(production)}`),
+		);
+
+		return undefined;
+	}
+
+	const connection: ConnectionConfig = {
+		name: name,
+		driver: driver,
+		production: production,
+	};
 	const user: string | undefined = optionalString(value, "user");
 	const password: string | undefined = optionalString(value, "password");
 
@@ -329,7 +349,6 @@ function parseConnections(value: unknown): ConnectionConfig[] {
 	}
 
 	const parsed: ConnectionConfig[] = [];
-	const names: Set<string> = new Set<string>();
 
 	value.forEach((entry: unknown, index: number): void => {
 		const connection: ConnectionConfig | undefined = parseConnection(
@@ -341,18 +360,53 @@ function parseConnections(value: unknown): ConnectionConfig[] {
 			return;
 		}
 
-		// Saved state is keyed by name, so names must be unique.
-		if (names.has(connection.name)) {
-			logError(new Error(`Duplicate connection name "${connection.name}"`));
+		// Saved state knows a connection by its name within its group, so a
+		// name may be used once for production and once for the rest.
+		if (
+			parsed.some(
+				(other: ConnectionConfig): boolean =>
+					other.name === connection.name &&
+					other.production === connection.production,
+			)
+		) {
+			logError(
+				new Error(
+					`Duplicate ${connection.production ? "production " : ""}connection name "${connection.name}"`,
+				),
+			);
 
 			return;
 		}
 
-		names.add(connection.name);
 		parsed.push(connection);
 	});
 
-	return parsed;
+	// In the order they're listed, so the selection steps through the groups
+	// as shown.
+	return connectionGroups(parsed).flat();
+}
+
+// The connections that aren't production, and then those that are, each in
+// the config's order. Empty groups are left out.
+export function connectionGroups(
+	connections: readonly ConnectionConfig[],
+): ConnectionConfig[][] {
+	return [false, true]
+		.map((production: boolean): ConnectionConfig[] =>
+			connections.filter(
+				(connection: ConnectionConfig): boolean =>
+					connection.production === production,
+			),
+		)
+		.filter((group: ConnectionConfig[]): boolean => group.length > 0);
+}
+
+// A connection's name, marked when it's production, for messages, since a
+// production connection may share its name with another.
+export function connectionLabel(connection: ConnectionConfig): string {
+	return connection.production
+		? `${connection.name} (production)`
+		: connection.name;
 }
 
 export const connections: ConnectionConfig[] = parseConnections(
@@ -444,6 +498,21 @@ export function withAlpha(color: RGBA, alpha: number): RGBA {
 	return RGBA.fromValues(color.r, color.g, color.b, alpha);
 }
 
+// The colour seen when top is drawn at alpha over an opaque bottom.
+function blend(top: RGBA, bottom: RGBA, alpha: number): RGBA {
+	const mix: (over: number, under: number) => number = (
+		over: number,
+		under: number,
+	): number => over * alpha + under * (1 - alpha);
+
+	return RGBA.fromValues(
+		mix(top.r, bottom.r),
+		mix(top.g, bottom.g),
+		mix(top.b, bottom.b),
+		1,
+	);
+}
+
 function isLight(color: RGBA): boolean {
 	return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b > 0.5;
 }
@@ -529,6 +598,7 @@ function makeTheme(config: unknown): ThemeType {
 		fg,
 		fg_inverse: opaqueBg,
 		muted: withAlpha(fg, 0.75),
+		muted_opaque: blend(fg, opaqueBg, 0.75),
 		border: color("border"),
 		hover: withAlpha(fg, 0.25),
 		selected: withAlpha(fg, 0.75),
@@ -556,3 +626,20 @@ function makeTheme(config: unknown): ThemeType {
 }
 
 export const theme: ThemeType = makeTheme(userConfig.theme);
+
+// The dot before a connection's name: the danger colour for production, and
+// otherwise grey, or the selected row's text colour, since grey is lost on its
+// background. The grey is opaque, since lists draw it straight into a buffer.
+export function connectionDot(
+	connection: ConnectionConfig,
+	selected: boolean = false,
+): Icon {
+	if (connection.production) {
+		return { icon: CONNECTION_DOT, color: theme.danger };
+	}
+
+	return {
+		icon: CONNECTION_DOT,
+		color: selected ? theme.fg_inverse : theme.muted_opaque,
+	};
+}

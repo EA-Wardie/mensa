@@ -12,6 +12,22 @@ export const DATABASE_ICON: string = "󰆼";
 
 export const APP_TITLE: string = "📒 Mensa";
 
+// The start screen's title, in the ANSI Shadow figlet font.
+export const APP_LOGO: string = [
+	"███╗   ███╗███████╗███╗   ██╗███████╗ █████╗ ",
+	"████╗ ████║██╔════╝████╗  ██║██╔════╝██╔══██╗",
+	"██╔████╔██║█████╗  ██╔██╗ ██║███████╗███████║",
+	"██║╚██╔╝██║██╔══╝  ██║╚██╗██║╚════██║██╔══██║",
+	"██║ ╚═╝ ██║███████╗██║ ╚████║███████║██║  ██║",
+	"╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝",
+].join("\n");
+
+// Marks a connection as production or not by its colour.
+export const CONNECTION_DOT: string = "●";
+
+// The footer's mark while a production connection is open.
+export const PRODUCTION_LABEL: string = "[PROD]";
+
 export const DEFAULT_ROW_LIMIT: number = 1000;
 
 export const DEFAULT_POSTGRES_PORT: number = 5432;

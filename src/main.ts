@@ -7,12 +7,7 @@ import { makeApp } from "./lib/context";
 import { connect } from "./lib/session";
 import { registerKeyboardShortcuts } from "./lib/shortcuts";
 import { lastConnection } from "./lib/state";
-import {
-	$connections,
-	$screen,
-	$selectedConnection,
-	type Screen,
-} from "./lib/store";
+import { $screen, $selectedConnection, type Screen } from "./lib/store";
 
 const SCREENS: Record<Screen, () => core.BoxRenderable> = {
 	connections: ConnectionsScreen.make.bind(ConnectionsScreen),
@@ -20,10 +15,7 @@ const SCREENS: Record<Screen, () => core.BoxRenderable> = {
 };
 
 function reconnect(): void {
-	const name: string | null = lastConnection();
-	const connection: ConnectionConfig | undefined = $connections
-		.get()
-		.find((candidate: ConnectionConfig): boolean => candidate.name === name);
+	const connection: ConnectionConfig | null = lastConnection();
 
 	if (connection) {
 		$selectedConnection.set(connection);

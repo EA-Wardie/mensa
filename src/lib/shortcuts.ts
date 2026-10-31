@@ -4,7 +4,7 @@ import { GridView } from "../components/GridView";
 import { QueryView } from "../components/QueryView";
 import { closeTab, refreshSchema } from "./actions";
 import { disposeClipboard } from "./clipboard";
-import type { ConnectionConfig } from "./config";
+import { type ConnectionConfig, connectionLabel } from "./config";
 import { QUIT_TIMEOUT } from "./consts";
 import { ctx } from "./context";
 import { closeClient } from "./database";
@@ -285,9 +285,11 @@ export const SHORTCUTS = {
 		description: "Close the connection",
 		screen: "database",
 		run: (): void => {
+			const connection: ConnectionConfig | null = $connection.get();
+
 			Confirmation.make({
 				heading: "Close connection?",
-				description: `Are you sure you want to close the connection to ${$connection.get()?.name ?? "the database"}?`,
+				description: `Are you sure you want to close the connection to ${connection ? connectionLabel(connection) : "the database"}?`,
 				confirmLabel: "Close",
 				onConfirm: disconnect,
 			});

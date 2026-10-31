@@ -1,5 +1,4 @@
 import * as core from "@opentui/core";
-import type { ColumnIcon } from "../lib/columnKinds";
 import { theme } from "../lib/config";
 import {
 	BOTTOM_TEE,
@@ -18,10 +17,13 @@ import {
 	type GridSource,
 	ICON_SPACE,
 } from "../lib/grid";
+import type { Icon } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
+import { copyNameItem } from "../lib/menuItems";
 import { $viewer, type ViewerTarget } from "../lib/store";
 import { viewRow } from "../lib/viewer";
+import { Menu } from "./Menu";
 import { RuleScrollBar } from "./RuleScrollBar";
 
 export interface Position {
@@ -32,7 +34,7 @@ export interface Position {
 // An icon drawn at the end of a column's name, such as its sort.
 export interface HeaderMarker {
 	index: number;
-	icon: ColumnIcon;
+	icon: Icon;
 }
 
 // The top rule, the column names and the rule under them.
@@ -366,7 +368,7 @@ export abstract class GridView extends core.Renderable {
 		this.forEachColumn(
 			grid,
 			(index: number, x: number, separator: number): void => {
-				const icon: ColumnIcon | undefined = grid.icons[index];
+				const icon: Icon | undefined = grid.icons[index];
 
 				if (icon) {
 					buffer.drawText(icon.icon, x + CELL_PADDING, y, icon.color);
@@ -616,19 +618,31 @@ export abstract class GridView extends core.Renderable {
 		this.updateHovered();
 	}
 
+	// A left click on a column name is the subclass's, and a right click opens
+	// the name's menu.
 	private handleHeaderDown(event: core.MouseEvent): void {
-		if (
-			event.button !== core.MouseButton.LEFT ||
-			event.y !== this.screenY + 1 ||
-			this.message() !== null
-		) {
+		if (event.y !== this.screenY + 1 || this.message() !== null) {
 			return;
 		}
 
 		const index: number | null = this.columnAt(event.x);
 
-		if (index !== null) {
+		if (index === null) {
+			return;
+		}
+
+		if (event.button === core.MouseButton.LEFT) {
 			this.onHeaderClick(index);
+		} else if (event.button === core.MouseButton.RIGHT) {
+			this.showHeaderMenu(event, index);
+		}
+	}
+
+	private showHeaderMenu(event: core.MouseEvent, index: number): void {
+		const column: string | null = this.columnName(index);
+
+		if (column !== null) {
+			Menu.make({ x: event.x, y: event.y, items: [copyNameItem(column)] });
 		}
 	}
 
