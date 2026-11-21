@@ -485,8 +485,6 @@ export class TableTabs {
 		this._component = new core.BoxRenderable(ctx, {
 			width: "100%",
 			flexShrink: 0,
-			border: ["top"],
-			borderColor: theme.border,
 			...options,
 		});
 

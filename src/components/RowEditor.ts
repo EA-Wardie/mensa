@@ -6,6 +6,7 @@ import { type RowChange, updateRow } from "../lib/database";
 import {
 	closeEditor,
 	confirmDiscard,
+	type EditorData,
 	editorData,
 	isSameRow,
 } from "../lib/editor";
@@ -18,19 +19,20 @@ import {
 	$notice,
 	clearNotice,
 	type EditorTarget,
-	type LoadedTable,
 	type Value,
 } from "../lib/store";
+import { reloadTable } from "../lib/tabs";
 import { viewRow } from "../lib/viewer";
 import { Button } from "./Button";
 import { type Field, makeField } from "./EditorField";
 import { Sidebar, type SidebarParts, TITLE_WIDTH } from "./Sidebar";
 
-// A sidebar that edits one row of the active table, with a field per column.
+// A sidebar that edits one row of the active table, or of a query's results
+// from one table, with a field per column.
 // Its keys are its own while it's open, so the global shortcuts pause.
 export class RowEditor {
 	private _target: EditorTarget;
-	private _data: LoadedTable;
+	private _data: EditorData;
 	private _readOnly: string | null;
 	private _component: core.BoxRenderable;
 	private _title: core.TextRenderable;
@@ -45,7 +47,7 @@ export class RowEditor {
 	private _lastFocused: Field | null = null;
 	private _saving: boolean = false;
 
-	constructor(target: EditorTarget, data: LoadedTable) {
+	constructor(target: EditorTarget, data: EditorData) {
 		this._target = target;
 		this._data = data;
 		this._readOnly = data.meta.readOnly;
@@ -112,7 +114,7 @@ export class RowEditor {
 				return;
 			}
 
-			const data: LoadedTable | null =
+			const data: EditorData | null =
 				target === null ? null : editorData(target);
 
 			editor?.close();
@@ -146,13 +148,24 @@ export class RowEditor {
 
 		this._fields = this._data.columns.map(
 			(column: string, index: number): Field => {
+				const source: string | null = this._data.sources[index] ?? null;
+				const shown: string | null = this._data.shown[index] ?? null;
 				const field: Field = makeField({
 					column: column,
-					meta: this._data.meta.columns.get(column),
+					meta:
+						source === null ? undefined : this._data.meta.columns.get(source),
 					value: row[index] ?? null,
 					index: index,
 					editable: this._readOnly === null,
-					isKey: primaryKey.includes(column),
+					isKey: source !== null && primaryKey.includes(source),
+					...(source === null
+						? {
+								readOnly:
+									shown === null
+										? "Not a column of the table, so it isn't saved."
+										: `Shows ${displayText(shown)} again, which is saved in its first field.`,
+							}
+						: {}),
 					onChange: (changed: Field): void => {
 						this.updateDirty(changed);
 					},
@@ -178,7 +191,12 @@ export class RowEditor {
 			Button.make({
 				label: `${VIEW_ICON} View`,
 				onClick: (): void => {
-					viewRow(this._target.row, this._lastFocused?.column ?? null);
+					viewRow(
+						this._target.row,
+						this._lastFocused === null
+							? null
+							: this._fields.indexOf(this._lastFocused),
+					);
 				},
 			}),
 		);
@@ -240,15 +258,12 @@ export class RowEditor {
 		);
 	}
 
-	// Focuses the column's field, or the first editable one.
-	private focusColumn(column: string | null): void {
-		const editable: Field[] = this.editableFields();
+	// Focuses the field of the column at the index, or the first editable one.
+	private focusColumn(column: number | null): void {
 		const field: Field | undefined =
-			editable.find(
-				(candidate: Field): boolean => candidate.column === column,
-			) ?? editable[0];
+			column === null ? undefined : this._fields[column];
 
-		field?.control?.focus();
+		(field?.control ?? this.editableFields()[0]?.control)?.focus();
 	}
 
 	private cycleFocus(step: number): void {
@@ -269,16 +284,18 @@ export class RowEditor {
 		});
 	}
 
-	// In column order.
+	// In column order, named as the table names them.
 	private changes(): RowChange[] {
-		return this._fields
-			.filter((field: Field): boolean => this._changed.has(field))
-			.map(
-				(field: Field): RowChange => ({
-					column: field.column,
-					value: field.value(),
-				}),
-			);
+		return this._fields.flatMap((field: Field, index: number): RowChange[] =>
+			this._changed.has(field)
+				? [
+						{
+							column: this._data.sources[index] ?? field.column,
+							value: field.value(),
+						},
+					]
+				: [],
+		);
 	}
 
 	private updateDirty(field: Field): void {
@@ -355,8 +372,15 @@ export class RowEditor {
 
 		if (error) {
 			this.showStatus(error);
-		} else {
-			closeEditor();
+
+			return;
+		}
+
+		closeEditor();
+
+		// A query's row was saved to a table, which may be open in a tab.
+		if (this._target.tab.kind === "query") {
+			reloadTable(this._target.table);
 		}
 	}
 

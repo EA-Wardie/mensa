@@ -1,4 +1,5 @@
 import * as core from "@opentui/core";
+import { version } from "../../package.json";
 import { theme } from "../lib/config";
 import { ctx } from "../lib/context";
 
@@ -15,6 +16,12 @@ export class App {
 			width: "100%",
 			height: "100%",
 			backgroundColor: theme.bg,
+			// The window's one border. The screens draw only the lines between
+			// their panels, which joinBorders joins to it.
+			border: true,
+			borderColor: theme.border,
+			bottomTitle: ` v${version} `,
+			bottomTitleAlignment: "right",
 			flexDirection: "row",
 			...options,
 		});

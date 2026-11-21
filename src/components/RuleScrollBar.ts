@@ -14,6 +14,9 @@ type Orientation = "horizontal" | "vertical";
 interface Options extends core.RenderableOptions<RuleScrollBar> {
 	orientation: Orientation;
 	onChange: (position: number) => void;
+	// A scroll box's own scrollbar, hidden, whose sizes this one takes as it
+	// draws, flashing when its position moves.
+	follow?: core.ScrollBarRenderable;
 }
 
 // The thumb while it's in use, and faded while it isn't. Neither is opaque,
@@ -43,8 +46,9 @@ export class RuleScrollBar extends core.Renderable {
 	private _hovered: boolean = false;
 	private _flashing: boolean = false;
 	private _flashTimer: Timer | undefined;
+	private _follow: core.ScrollBarRenderable | null;
 
-	constructor({ orientation, onChange, ...options }: Options) {
+	constructor({ orientation, onChange, follow, ...options }: Options) {
 		super(ctx, {
 			...(orientation === "vertical" ? { width: 1 } : { height: 1 }),
 			...options,
@@ -52,6 +56,7 @@ export class RuleScrollBar extends core.Renderable {
 
 		this._vertical = orientation === "vertical";
 		this._onChange = onChange;
+		this._follow = follow ?? null;
 
 		unbindOnDestroy(this, (): void => {
 			clearTimeout(this._flashTimer);
@@ -160,7 +165,29 @@ export class RuleScrollBar extends core.Renderable {
 		return { start, length, max };
 	}
 
+	// Takes the followed scrollbar's sizes. Its scroll box draws again when it
+	// scrolls, so this sees each change.
+	private followSizes(): void {
+		const follow: core.ScrollBarRenderable | null = this._follow;
+
+		if (!follow) {
+			return;
+		}
+
+		const moved: boolean = follow.scrollPosition !== this._scrollPosition;
+
+		this._scrollSize = follow.scrollSize;
+		this._viewportSize = follow.viewportSize;
+		this._scrollPosition = follow.scrollPosition;
+
+		if (moved) {
+			this.flash();
+		}
+	}
+
 	protected override renderSelf(buffer: core.OptimizedBuffer): void {
+		this.followSizes();
+
 		const thumb: Thumb | null = this.thumb();
 
 		if (!thumb) {

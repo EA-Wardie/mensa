@@ -10,7 +10,7 @@ import {
 	VIEW_MAX_LENGTH,
 } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { editRow } from "../lib/editor";
+import { canEditRows, editRow } from "../lib/editor";
 import {
 	displayLines,
 	displayText,
@@ -22,6 +22,7 @@ import {
 import type { GridSource } from "../lib/grid";
 import { afterLayout, unbindOnDestroy } from "../lib/lifetime";
 import {
+	$resultEditsRead,
 	$viewer,
 	type TypeKind,
 	type Value,
@@ -276,18 +277,24 @@ export class RowViewer {
 		});
 	}
 
-	// Only a table's rows can be edited.
+	// A table's rows can be edited, and a query's when they come from one table
+	// with its primary key, which hides the button once a check finds they
+	// don't.
 	private addFooter(footer: core.BoxRenderable): void {
-		if (this._target.tab.kind === "table") {
-			footer.add(
-				Button.make({
-					label: `${EDIT_ICON} Edit`,
-					onClick: (): void => {
-						editRow(this._target.row, this._target.column);
-					},
-				}),
-			);
-		}
+		const edit: core.Renderable = Button.make({
+			label: `${EDIT_ICON} Edit`,
+			onClick: (): void => {
+				editRow(this._target.row, this._target.column);
+			},
+		});
+
+		footer.add(edit);
+		unbindOnDestroy(
+			this._component,
+			$resultEditsRead.subscribe((): void => {
+				edit.visible = canEditRows();
+			}),
+		);
 
 		footer.add(Sidebar.spacer());
 		footer.add(
@@ -337,13 +344,10 @@ export class RowViewer {
 		this.reveal(target.column);
 	}
 
-	private reveal(column: string | null): void {
-		const index: number =
-			column === null ? -1 : this._source.columns.indexOf(column);
-
-		if (index >= 0) {
+	private reveal(column: number | null): void {
+		if (column !== null) {
 			afterLayout(this._component, (): void => {
-				this._scroll.scrollChildIntoView(`viewer-field-${index}`);
+				this._scroll.scrollChildIntoView(`viewer-field-${column}`);
 			});
 		}
 	}

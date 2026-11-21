@@ -3,6 +3,7 @@ import { theme } from "../lib/config";
 import { CLOSE_ICON, EDITOR_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
 import { IconButton } from "./IconButton";
+import { RuleScrollBar } from "./RuleScrollBar";
 
 // The title's room, beside the close button and a marker after the title.
 export const TITLE_WIDTH: number = EDITOR_WIDTH - 8;
@@ -31,12 +32,12 @@ export class Sidebar {
 			height: "100%",
 			flexShrink: 0,
 			flexDirection: "column",
-			border: ["right"],
+			border: ["left"],
 			borderColor: theme.border,
 		});
 
 		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
+			border: ["bottom"],
 			borderColor: theme.border,
 			flexDirection: "row",
 			justifyContent: "space-between",
@@ -62,20 +63,39 @@ export class Sidebar {
 				paddingX: 1,
 				paddingTop: 1,
 			},
-			verticalScrollbarOptions: {
-				trackOptions: {
-					foregroundColor: theme.scrollbar_thumb,
-					backgroundColor: theme.scrollbar_track,
-				},
-			},
 		});
 
 		scroll.focusable = false;
 		scroll.verticalScrollBar.focusable = false;
 		scroll.horizontalScrollBar.focusable = false;
+		// Set by hand, so the box never shows it again. The rule scrollbar
+		// takes its sizes instead.
+		scroll.verticalScrollBar.visible = false;
+
+		// The body holds the scroll box, and the scrollbar on the window's
+		// right border beside it, as the grid's is.
+		const body: core.BoxRenderable = new core.BoxRenderable(ctx, {
+			flexGrow: 1,
+			flexShrink: 1,
+		});
+
+		body.add(scroll);
+		body.add(
+			RuleScrollBar.make({
+				orientation: "vertical",
+				position: "absolute",
+				top: 0,
+				right: -1,
+				height: "100%",
+				follow: scroll.verticalScrollBar,
+				onChange: (position: number): void => {
+					scroll.scrollTop = position;
+				},
+			}),
+		);
 
 		const footer: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
+			border: ["top"],
 			borderColor: theme.border,
 			flexDirection: "row",
 			columnGap: 1,
@@ -84,7 +104,7 @@ export class Sidebar {
 		});
 
 		root.add(header);
-		root.add(scroll);
+		root.add(body);
 		root.add(footer);
 
 		this._parts = { root, scroll, footer };

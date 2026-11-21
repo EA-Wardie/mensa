@@ -7,6 +7,7 @@ import { displayText, fitText } from "../lib/format";
 import { type Icon, iconWidth } from "../lib/icon";
 import { unbindOnDestroy } from "../lib/lifetime";
 import { clamp } from "../lib/math";
+import { RuleScrollBar } from "./RuleScrollBar";
 
 interface Options<T> extends core.RenderableOptions<List<T>> {
 	items: ReadableAtom<readonly T[]>;
@@ -17,6 +18,12 @@ interface Options<T> extends core.RenderableOptions<List<T>> {
 	detail?: (item: T) => string;
 	bold?: (item: T) => boolean;
 	redrawOn?: ReadableAtom<unknown>[];
+	// Whether the list has the focus, true by default. Without it the selected
+	// row is drawn faintly, with normal text.
+	focused?: () => boolean;
+	// Scrolls with a thumb over the parent's line to the right, as the grid
+	// does, instead of a track inside the list.
+	ruleScrollBar?: boolean;
 	onActivate: (item: T) => void;
 	// Opens the item's menu at the mouse, after right clicking selects it.
 	onMenu?: (item: T, x: number, y: number) => void;
@@ -24,7 +31,8 @@ interface Options<T> extends core.RenderableOptions<List<T>> {
 
 export class List<T> extends core.Renderable {
 	private _options: Options<T>;
-	private _scrollBar: core.ScrollBarRenderable;
+	private _scrollBar: core.ScrollBarRenderable | RuleScrollBar;
+	private _viewportHeight: number = 0;
 	private _items: readonly T[] = [];
 	private _offset: number = 0;
 	private _hovered: number | null = null;
@@ -36,22 +44,18 @@ export class List<T> extends core.Renderable {
 
 		this._options = options;
 
-		this._scrollBar = new core.ScrollBarRenderable(ctx, {
-			orientation: "vertical",
-			position: "absolute",
-			top: 0,
-			right: 0,
-			height: "100%",
-			trackOptions: {
-				foregroundColor: theme.scrollbar_thumb,
-				backgroundColor: theme.scrollbar_track,
-			},
-			onChange: (position: number): void => {
-				this.scrollTo(position);
-			},
-		});
-
-		this._scrollBar.focusable = false;
+		this._scrollBar = options.ruleScrollBar
+			? RuleScrollBar.make({
+					orientation: "vertical",
+					position: "absolute",
+					top: 0,
+					right: -1,
+					height: "100%",
+					onChange: (position: number): void => {
+						this.scrollTo(position);
+					},
+				})
+			: this.makeTrackScrollBar();
 
 		this.add(this._scrollBar);
 		this.registerStoreEvents();
@@ -61,15 +65,48 @@ export class List<T> extends core.Renderable {
 		return new List<T>(options);
 	}
 
+	private makeTrackScrollBar(): core.ScrollBarRenderable {
+		const scrollBar: core.ScrollBarRenderable = new core.ScrollBarRenderable(
+			ctx,
+			{
+				orientation: "vertical",
+				position: "absolute",
+				top: 0,
+				right: 0,
+				height: "100%",
+				trackOptions: {
+					foregroundColor: theme.scrollbar_thumb,
+					backgroundColor: theme.scrollbar_track,
+				},
+				onChange: (position: number): void => {
+					this.scrollTo(position);
+				},
+			},
+		);
+
+		scrollBar.focusable = false;
+
+		return scrollBar;
+	}
+
+	// The track's width, which the rows leave room for. A rule scrollbar is
+	// drawn outside the list.
+	private get scrollBarWidth(): number {
+		return this._scrollBar instanceof core.ScrollBarRenderable &&
+			this._scrollBar.visible
+			? this._scrollBar.width
+			: 0;
+	}
+
 	protected override renderSelf(buffer: core.OptimizedBuffer): void {
-		const rowWidth: number =
-			this.width - (this._scrollBar.visible ? this._scrollBar.width : 0);
+		const rowWidth: number = this.width - this.scrollBarWidth;
 		const textWidth: number = rowWidth - 2;
 		const end: number = Math.min(
 			this._items.length,
 			this._offset + this.height,
 		);
 		const selected: T | null = this._options.selected.get();
+		const focused: boolean = this._options.focused?.() ?? true;
 
 		for (let index: number = this._offset; index < end; index++) {
 			const item: T | undefined = this._items[index];
@@ -81,7 +118,9 @@ export class List<T> extends core.Renderable {
 			const y: number = this.screenY + index - this._offset;
 			const isSelected: boolean = item === selected;
 			const background: core.RGBA | null = isSelected
-				? theme.selected
+				? focused
+					? theme.selected
+					: theme.selected_unfocused
 				: index === this._hovered
 					? theme.hover
 					: null;
@@ -94,7 +133,7 @@ export class List<T> extends core.Renderable {
 				continue;
 			}
 
-			this.drawItem(buffer, item, y, textWidth, isSelected);
+			this.drawItem(buffer, item, y, textWidth, isSelected && focused);
 		}
 	}
 
@@ -147,7 +186,9 @@ export class List<T> extends core.Renderable {
 	protected override onResize(width: number, height: number): void {
 		super.onResize(width, height);
 
-		const heightChanged: boolean = height !== this._scrollBar.viewportSize;
+		const heightChanged: boolean = height !== this._viewportHeight;
+
+		this._viewportHeight = height;
 
 		this.sync();
 
@@ -164,16 +205,36 @@ export class List<T> extends core.Renderable {
 			case "scroll":
 				this.handleScroll(event);
 				break;
+			case "drag":
+				this.dragScrollBar(event);
+				this.trackMouse(event);
+				break;
+			case "up":
+			case "drag-end":
+				if (this._scrollBar instanceof RuleScrollBar) {
+					this._scrollBar.release(event.x, event.y);
+				}
+				break;
 			case "over":
 			case "move":
-			case "drag":
 			case "out":
-				this._mouseY =
-					event.type === "out" || event.target !== this ? null : event.y;
-
-				this.updateHovered();
+				this.trackMouse(event);
 				break;
 		}
+	}
+
+	// A thumb drag that strays onto the rows comes here, so it's passed on.
+	private dragScrollBar(event: core.MouseEvent): void {
+		if (this._scrollBar instanceof RuleScrollBar) {
+			this._scrollBar.drag(event.x, event.y);
+		}
+	}
+
+	private trackMouse(event: core.MouseEvent): void {
+		this._mouseY =
+			event.type === "out" || event.target !== this ? null : event.y;
+
+		this.updateHovered();
 	}
 
 	private rowAt(y: number): number | null {
@@ -228,13 +289,24 @@ export class List<T> extends core.Renderable {
 		this._scrollBar.scrollSize = this._items.length;
 		this._scrollBar.viewportSize = this.height;
 
-		this.scrollTo(this._offset);
+		this.scrollTo(this._offset, false);
 	}
 
-	private scrollTo(offset: number): void {
+	// A scroll that moves flashes a rule scrollbar's thumb, unless it only
+	// keeps the offset in range.
+	private scrollTo(offset: number, flash: boolean = true): void {
 		const max: number = Math.max(0, this._items.length - this.height);
+		const next: number = clamp(offset, 0, max);
 
-		this._offset = clamp(offset, 0, max);
+		if (
+			flash &&
+			next !== this._offset &&
+			this._scrollBar instanceof RuleScrollBar
+		) {
+			this._scrollBar.flash();
+		}
+
+		this._offset = next;
 		this._scrollBar.scrollPosition = this._offset;
 
 		this.updateHovered();

@@ -6,6 +6,7 @@ import { rememberConnection } from "./state";
 import {
 	$connecting,
 	$connection,
+	$focusedPane,
 	$notice,
 	$schema,
 	$screen,
@@ -44,6 +45,7 @@ export async function connect(connection: ConnectionConfig): Promise<void> {
 	$schema.set(opened.schema);
 	$tables.set(opened.tables);
 	$selectedTable.set(opened.tables[0] ?? null);
+	$focusedPane.set("tables");
 	$connection.set(connection);
 	rememberConnection(connection);
 	restoreTabs(connection);

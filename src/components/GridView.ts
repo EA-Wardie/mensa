@@ -3,6 +3,7 @@ import { theme } from "../lib/config";
 import {
 	BOTTOM_TEE,
 	CROSS,
+	LEFT_TEE,
 	RIGHT_TEE,
 	SEPARATOR,
 	TOP_TEE,
@@ -23,8 +24,11 @@ import { clearMarks, marksOf, toggleMark } from "../lib/marks";
 import { clamp } from "../lib/math";
 import { copyNameItem } from "../lib/menuItems";
 import {
+	$editor,
+	$focusedPane,
 	$markedRows,
 	$viewer,
+	type EditorTarget,
 	type Value,
 	type ViewerTarget,
 } from "../lib/store";
@@ -37,6 +41,9 @@ export interface Position {
 	y: number;
 }
 
+// A row the view or the editor has open.
+type RowOfRows = Pick<ViewerTarget & EditorTarget, "rows" | "row">;
+
 // An icon drawn at the end of a column's name, such as its sort.
 export interface HeaderMarker {
 	index: number;
@@ -47,6 +54,9 @@ export interface HeaderMarker {
 const HEADER_HEIGHT: number = 3;
 
 const RULE: string = "─";
+
+// Keeps the colour under a line drawn as a cell.
+const CLEAR: core.RGBA = core.RGBA.fromValues(0, 0, 0, 0);
 
 const SCROLL_STEP_X: number = 4;
 
@@ -64,7 +74,6 @@ export abstract class GridView extends core.Renderable {
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
 	// A rule as wide as the grid, kept until the width changes.
-	private _rule: string = "";
 	protected _offset: Position = { x: 0, y: 0 };
 
 	constructor(options: core.RenderableOptions<GridView>) {
@@ -100,7 +109,16 @@ export abstract class GridView extends core.Renderable {
 		this.add(this._vertical);
 		this.add(this._horizontal);
 
-		// Viewing one of these rows selects it, so the selection follows the view.
+		// Viewing or editing one of these rows selects it, so the selection
+		// follows the view and the editor.
+		const follow: (target: RowOfRows | null) => void = (
+			target: RowOfRows | null,
+		): void => {
+			if (target && target.rows === this.source()?.rows) {
+				this.selectRowAt(target.row);
+			}
+		};
+
 		unbindOnDestroy(
 			this,
 			(): void => {
@@ -108,12 +126,12 @@ export abstract class GridView extends core.Renderable {
 					GridView.current = null;
 				}
 			},
-			$viewer.listen((target: ViewerTarget | null): void => {
-				if (target && target.rows === this.source()?.rows) {
-					this.selectRowAt(target.row);
-				}
-			}),
+			$viewer.listen(follow),
+			$editor.listen(follow),
 			$markedRows.listen((): void => {
+				this.requestRender();
+			}),
+			$focusedPane.listen((): void => {
 				this.requestRender();
 			}),
 		);
@@ -154,7 +172,13 @@ export abstract class GridView extends core.Renderable {
 	// on one.
 	protected onRowClick(_row: number | null, _column: number | null): void {}
 
-	protected onRowMenu(_event: core.MouseEvent, _row: number): void {}
+	// column is the index of the column under the pointer, or null past the
+	// last. Indexes, since a query's columns can share a name.
+	protected onRowMenu(
+		_event: core.MouseEvent,
+		_row: number,
+		_column: number | null,
+	): void {}
 
 	// Ends a double click, such as when a Ctrl+click marks a row.
 	protected resetClicks(): void {}
@@ -174,7 +198,7 @@ export abstract class GridView extends core.Renderable {
 		double: boolean,
 	): void {
 		if (double || $viewer.get() !== null) {
-			viewRow(row, double ? this.columnName(column) : null);
+			viewRow(row, double ? column : null);
 		} else {
 			this.selectRowAt(row);
 		}
@@ -205,12 +229,22 @@ export abstract class GridView extends core.Renderable {
 		}
 
 		toggleMark(rows, selected);
+		this.moveSelection(1);
+	}
 
-		const next: number | null = this.stepRow(1);
+	// Selects the row step rows from the selection, which the view follows
+	// while it's open.
+	public moveSelection(step: number): void {
+		const row: number | null = this.stepRow(step);
 
-		if (next !== null) {
-			this.pickRow(next);
+		if (row !== null) {
+			this.pickRow(row);
 		}
+	}
+
+	// The pane without the focus draws its selection faintly, with normal text.
+	private get hasPaneFocus(): boolean {
+		return $focusedPane.get() === "grid";
 	}
 
 	protected get grid(): Grid | null {
@@ -357,15 +391,28 @@ export abstract class GridView extends core.Renderable {
 		buffer.drawText(text, x, y, this.messageColor());
 	}
 
-	// Full width, meeting the parent's right border with a tee. The header and
-	// the rows then draw the column joins over them.
+	// Full width, meeting the lines on either side with tees. The header and
+	// the rows then draw the column joins over them. The left tee is drawn
+	// here, since the horizontal scrollbar's thumb tints the rule's first cell,
+	// which BorderJoints then can't see.
 	private drawRule(buffer: core.OptimizedBuffer, y: number): void {
-		if (this._rule.length !== this.width) {
-			this._rule = RULE.repeat(this.width);
+		for (let x: number = this.screenX; x < this.screenX + this.width; x++) {
+			this.drawLine(buffer, RULE, x, y);
 		}
 
-		buffer.drawText(this._rule, this.screenX, y, theme.border);
-		buffer.drawText(RIGHT_TEE, this.screenX + this.width, y, theme.border);
+		this.drawLine(buffer, LEFT_TEE, this.screenX - 1, y);
+		this.drawLine(buffer, RIGHT_TEE, this.screenX + this.width, y);
+	}
+
+	// Draws a line's character as one cell, which keeps its code point, so
+	// the border joins can read it. Text would hold a grapheme id instead.
+	private drawLine(
+		buffer: core.OptimizedBuffer,
+		char: string,
+		x: number,
+		y: number,
+	): void {
+		buffer.setCellWithAlphaBlending(x, y, char, theme.border, CLEAR);
 	}
 
 	private drawRules(buffer: core.OptimizedBuffer): void {
@@ -427,9 +474,9 @@ export abstract class GridView extends core.Renderable {
 					);
 				}
 
-				buffer.drawText(TOP_TEE, separator, y - 1, theme.border);
-				buffer.drawText(SEPARATOR, separator, y, theme.border);
-				buffer.drawText(join, separator, y + 1, theme.border);
+				this.drawLine(buffer, TOP_TEE, separator, y - 1);
+				this.drawLine(buffer, SEPARATOR, separator, y);
+				this.drawLine(buffer, join, separator, y + 1);
 			},
 		);
 	}
@@ -452,14 +499,16 @@ export abstract class GridView extends core.Renderable {
 			}
 		}
 
-		this.fillRow(
-			buffer,
-			grid,
-			selected,
-			selected !== null && marked.has(selected)
+		const isMarked: boolean = selected !== null && marked.has(selected);
+		const color: core.RGBA = this.hasPaneFocus
+			? isMarked
 				? theme.marked_selected
-				: theme.selected,
-		);
+				: theme.selected
+			: isMarked
+				? theme.marked_selected_unfocused
+				: theme.selected_unfocused;
+
+		this.fillRow(buffer, grid, selected, color);
 	}
 
 	private fillRow(
@@ -505,7 +554,9 @@ export abstract class GridView extends core.Renderable {
 			return;
 		}
 
-		const selected: number | null = this.selectedRow();
+		const inverted: number | null = this.hasPaneFocus
+			? this.selectedRow()
+			: null;
 
 		this.drawRowsEnd(buffer, grid);
 
@@ -517,7 +568,7 @@ export abstract class GridView extends core.Renderable {
 			}
 
 			const y: number = this.screenY + HEADER_HEIGHT + index - this._offset.y;
-			const inverse: boolean = index === selected;
+			const inverse: boolean = index === inverted;
 
 			this.forEachColumn(
 				grid,
@@ -534,7 +585,7 @@ export abstract class GridView extends core.Renderable {
 							? core.TextAttributes.ITALIC
 							: core.TextAttributes.NONE,
 					);
-					buffer.drawText(SEPARATOR, separator, y, theme.border);
+					this.drawLine(buffer, SEPARATOR, separator, y);
 				},
 			);
 		}
@@ -554,10 +605,10 @@ export abstract class GridView extends core.Renderable {
 			grid,
 			(_column: number, _x: number, separator: number): void => {
 				for (let y: number = from; y < end; y++) {
-					buffer.drawText(SEPARATOR, separator, y, theme.border);
+					this.drawLine(buffer, SEPARATOR, separator, y);
 				}
 
-				buffer.drawText(BOTTOM_TEE, separator, end, theme.border);
+				this.drawLine(buffer, BOTTOM_TEE, separator, end);
 			},
 		);
 	}
@@ -725,7 +776,7 @@ export abstract class GridView extends core.Renderable {
 			event.button === core.MouseButton.RIGHT ? this.bodyRowAt(event) : null;
 
 		if (index !== null) {
-			this.onRowMenu(event, index);
+			this.onRowMenu(event, index, this.columnAt(event.x));
 		}
 	}
 

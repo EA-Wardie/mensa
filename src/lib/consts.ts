@@ -40,7 +40,11 @@ export const DEFAULT_DOUBLE_CLICK_TIMEOUT: number = 250;
 
 export const CONNECTION_TIMEOUT: number = 10;
 
-export const SIDEBAR_WIDTH: number = 42;
+// Milliseconds a table tab's write or load waits on a lock, such as one a
+// query tab's open transaction holds, before it fails. Postgres only.
+export const LOCK_TIMEOUT: number = 10000;
+
+export const SIDEBAR_WIDTH: number = 41;
 
 export const CONNECTIONS_WIDTH: number = 72;
 
@@ -85,6 +89,8 @@ export const CROSS: string = "┼";
 export const BOTTOM_TEE: string = "┴";
 
 export const RIGHT_TEE: string = "┤";
+
+export const LEFT_TEE: string = "├";
 
 // How strongly a scrollbar's thumb tints the rule it runs along, while it
 // isn't in use and while it is.
@@ -137,3 +143,7 @@ export const CONFIRM_ICON: string = "";
 export const QUIT_TIMEOUT: number = 500;
 
 export const STATE_SAVE_DELAY: number = 250;
+
+// Milliseconds an Edit waits on checking a query's rows before the footer
+// says so, so a quick check doesn't flash.
+export const CHECKING_NOTICE_DELAY: number = 200;

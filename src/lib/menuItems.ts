@@ -1,6 +1,7 @@
 import type { MenuItem } from "../components/Menu";
 import { copyToClipboard } from "./actions";
-import { COPY_ICON, VIEW_ICON } from "./consts";
+import { COPY_ICON, EDIT_ICON, VIEW_ICON } from "./consts";
+import { editRow } from "./editor";
 import { rowAsCsv, rowAsJson, rowsAsCsv, rowsAsJson } from "./export";
 import type { GridSource } from "./grid";
 import { SHORTCUTS, shortcutLabel } from "./shortcuts";
@@ -18,11 +19,42 @@ export function viewRowItem(row: number): MenuItem {
 	};
 }
 
-// Copies the row as it was when the menu opened.
-export function copyRowItems(source: GridSource, row: number): MenuItem[] {
+// A table's E edits its row, while a query's edits its SQL, so only a table's
+// item shows the shortcut.
+export function editRowItem(row: number, shortcut: boolean): MenuItem {
+	return {
+		label: `${EDIT_ICON} Edit`,
+		...(shortcut ? { shortcut: shortcutLabel(SHORTCUTS.editRow) } : {}),
+		onSelect: (): void => {
+			editRow(row, null);
+		},
+	};
+}
+
+// Copies the row, and the cell of the column at the index unless it's NULL,
+// as they were when the menu opened. The cell is copied as the database gave
+// it.
+export function copyRowItems(
+	source: GridSource,
+	row: number,
+	column: number | null,
+): MenuItem[] {
 	const values: Value[] = source.rows[row] ?? [];
+	const cell: Value | undefined = column === null ? undefined : values[column];
+	const cellItems: MenuItem[] =
+		typeof cell === "string"
+			? [
+					{
+						label: `${COPY_ICON} Copy cell`,
+						onSelect: (): void => {
+							copyToClipboard(cell);
+						},
+					},
+				]
+			: [];
 
 	return [
+		...cellItems,
 		{
 			label: `${COPY_ICON} Copy row as CSV`,
 			onSelect: (): void => {

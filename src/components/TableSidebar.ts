@@ -35,6 +35,7 @@ import {
 	$activeTable,
 	$connection,
 	$connections,
+	$focusedPane,
 	$openTables,
 	$schema,
 	$selectedTable,
@@ -58,7 +59,7 @@ export class TableSidebar {
 			width: SIDEBAR_WIDTH,
 			height: "100%",
 			flexShrink: 0,
-			border: ["left", "right"],
+			border: ["right"],
 			borderColor: theme.border,
 			...this._options,
 		});
@@ -74,8 +75,6 @@ export class TableSidebar {
 
 	private addHeader(): void {
 		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top"],
-			borderColor: theme.border,
 			flexDirection: "row",
 			justifyContent: "space-between",
 			flexShrink: 0,
@@ -126,13 +125,13 @@ export class TableSidebar {
 			);
 		}
 
-		// The name leaves room for the sidebar's borders, the padding, the dot
+		// The name leaves room for the sidebar's border, the padding, the dot
 		// and its gap, a gap, the divider and the menu button.
 		title.add(
 			new core.TextRenderable(ctx, {
 				content: fitText(
 					`${DATABASE_ICON} ${displayText(connection?.name ?? "")}`,
-					SIDEBAR_WIDTH - 8 - iconWidth(dot),
+					SIDEBAR_WIDTH - 7 - iconWidth(dot),
 				),
 				fg: theme.fg,
 				attributes: core.TextAttributes.BOLD,
@@ -153,7 +152,7 @@ export class TableSidebar {
 			},
 		});
 
-		buttons.add(Divider.make({ vertical: true, joined: true }));
+		buttons.add(Divider.make({ vertical: true }));
 		buttons.add(menu);
 		header.add(buttons);
 
@@ -174,12 +173,22 @@ export class TableSidebar {
 			selected: $selectedTable,
 			label: (table: string): string => `󰓫 ${table}`,
 			bold: (table: string): boolean => $openTables.get().includes(table),
-			redrawOn: [$openTables],
-			// Another table's tab would close the row editor.
+			focused: (): boolean => $focusedPane.get() === "tables",
+			// On the sidebar's line, beside the grid.
+			ruleScrollBar: true,
+			// A click on the list focuses it, before a double click opens a
+			// table and focuses its rows.
+			onMouseDown: (): void => {
+				$focusedPane.set("tables");
+			},
+			redrawOn: [$openTables, $focusedPane],
+			// Another table's tab would close the row editor. Opening one
+			// focuses its rows.
 			onActivate: (table: string): void => {
-				confirmDiscardIf(table !== $activeTable.get(), (): void =>
-					openTable(table),
-				);
+				confirmDiscardIf(table !== $activeTable.get(), (): void => {
+					openTable(table);
+					$focusedPane.set("grid");
+				});
 			},
 			onMenu: (table: string, x: number, y: number): void => {
 				this.showTableMenu(table, x, y);

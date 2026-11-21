@@ -18,6 +18,7 @@ import {
 	$activeTab,
 	$activeTable,
 	$connection,
+	$focusedPane,
 	$openTables,
 	$queryResults,
 	$querySql,
@@ -206,6 +207,14 @@ $tables.listen((tables: readonly string[]): void => {
 
 	if (selected !== null && !tables.includes(selected)) {
 		$selectedTable.set($activeTable.get() ?? tables[0] ?? null);
+	}
+});
+
+// With no tab shown there are no rows to move in, so the sidebar takes the
+// focus.
+$activeTab.listen((tab: Tab | null): void => {
+	if (tab === null) {
+		$focusedPane.set("tables");
 	}
 });
 

@@ -46,6 +46,9 @@ interface Options {
 	// False when the row can't be saved, which leaves every field read only.
 	editable: boolean;
 	isKey: boolean;
+	// Why the column is read only on its own, such as an expression in a
+	// query's results.
+	readOnly?: string;
 	onChange: (field: Field) => void;
 	onFocus: (field: Field) => void;
 }
@@ -567,7 +570,7 @@ export function makeField(options: Options): Field {
 	const { meta, value }: Options = options;
 
 	if (!options.editable || !meta) {
-		return new ReadOnlyField(options, "");
+		return new ReadOnlyField(options, options.readOnly ?? "");
 	}
 
 	if (meta.edit.as === "readonly") {

@@ -46,6 +46,8 @@ export interface ThemeType {
 	border: RGBA;
 	hover: RGBA;
 	selected: RGBA;
+	// The selected row of the pane without the focus, drawn with normal text.
+	selected_unfocused: RGBA;
 	active: RGBA;
 	pressed: RGBA;
 	input_bg: RGBA;
@@ -60,6 +62,7 @@ export interface ThemeType {
 	// Marked grid rows, and a marked row that is also selected.
 	marked: RGBA;
 	marked_selected: RGBA;
+	marked_selected_unfocused: RGBA;
 	success: RGBA;
 	success_pressed: RGBA;
 	danger: RGBA;
@@ -607,6 +610,7 @@ function makeTheme(config: unknown): ThemeType {
 		border: color("border"),
 		hover: withAlpha(fg, 0.25),
 		selected: withAlpha(fg, 0.75),
+		selected_unfocused: withAlpha(fg, 0.4),
 		active: fg,
 		pressed: withAlpha(fg, 0.75),
 		input_bg: withAlpha(fg, 0.25),
@@ -618,6 +622,7 @@ function makeTheme(config: unknown): ThemeType {
 		accent: accent,
 		marked: withAlpha(accent, 0.25),
 		marked_selected: withAlpha(accent, 0.75),
+		marked_selected_unfocused: withAlpha(accent, 0.5),
 		success,
 		success_pressed: withAlpha(success, 0.75),
 		danger,

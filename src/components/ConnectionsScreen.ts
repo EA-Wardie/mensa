@@ -34,6 +34,9 @@ const PANEL_CHROME_HEIGHT: number = 6;
 // The screen's padding on each side.
 const SCREEN_PADDING: number = 1;
 
+// The window's border on each side.
+const WINDOW_BORDER: number = 1;
+
 // The rows between the logo and the panel.
 const LOGO_GAP: number = 1;
 
@@ -118,9 +121,12 @@ export class ConnectionsScreen {
 			height: number,
 		): void => {
 			this._logo.visible =
-				width >= LOGO_WIDTH + SCREEN_PADDING * 2 &&
+				width >= LOGO_WIDTH + (SCREEN_PADDING + WINDOW_BORDER) * 2 &&
 				height >=
-					LOGO_HEIGHT + LOGO_GAP + this.panelHeight() + SCREEN_PADDING * 2;
+					LOGO_HEIGHT +
+						LOGO_GAP +
+						this.panelHeight() +
+						(SCREEN_PADDING + WINDOW_BORDER) * 2;
 		};
 
 		fit(ctx.width, ctx.height);

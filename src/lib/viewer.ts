@@ -2,6 +2,7 @@ import { confirmDiscard } from "./editor";
 import type { GridSource } from "./grid";
 import {
 	$activeTab,
+	$focusedPane,
 	$queryResults,
 	$tableData,
 	$viewer,
@@ -37,7 +38,7 @@ export function viewerSource(target: ViewerTarget): GridSource | null {
 // Shows a row of the active tab in the view, scrolled to the column, which
 // the grid showing it then selects. It closes the editor first, asking when it
 // has unsaved changes.
-export function viewRow(row: number, column: string | null): void {
+export function viewRow(row: number, column: number | null): void {
 	const tab: Tab | null = $activeTab.get();
 	const source: GridSource | null = tab === null ? null : tabSource(tab);
 
@@ -53,6 +54,7 @@ export function viewRow(row: number, column: string | null): void {
 	};
 
 	confirmDiscard((): void => {
+		$focusedPane.set("grid");
 		$viewer.set(target);
 	});
 }

@@ -12,6 +12,7 @@ import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
 import {
 	$activeTab,
 	$dialogOpen,
+	$focusedPane,
 	$queryResults,
 	$querySql,
 	$tabs,
@@ -150,7 +151,10 @@ export class QueryView {
 
 	// Focuses the active query tab's SQL, if a query tab is active.
 	public static focusShown(): boolean {
-		QueryView._shown?._textarea.focus();
+		if (QueryView._shown) {
+			$focusedPane.set("grid");
+			QueryView._shown._textarea.focus();
+		}
 
 		return QueryView._shown !== null;
 	}
