@@ -10,11 +10,16 @@
 ### Changed
 
 - Opening a table with `Return` or a double click, viewing a row and `E` in a query tab focus the rows. The sidebar has the focus on connecting and whenever no tab is open.
+- The window has one border around it, and the sidebar, tabs, grid, footer and the row editor and view draw only the lines between them. The version is shown in the window's bottom right corner instead of the footer's.
+- Lines join where they meet, with `├`, `┤`, `┬`, `┴` and `┼`: where the panels meet the window border and each other, at the sidebar's headers, the query editor's rule, the start screen's panel and the dividers in menus. Before, a gap showed between a line and the border it ended at.
+- Menus stay inside the window border.
 
 ### Internal
 
 - `$focusedPane` in `lib/store.ts`, set by the shortcuts, clicks, `viewRow` and `QueryView.focusShown`, and back to the tables by a `$activeTab` listener in `lib/tabs.ts`. The `selectUp`/`selectDown` shortcuts replace `tableUp`/`tableDown`, and `focusPane` is `Tab`.
 - `GridView.moveSelection` steps and picks a row, shared with `markSelected`. `GridView.onRowMenu` gets the name of the column under the pointer, and `copyRowItems` takes it for Copy cell. `List` takes a `focused` option. `theme.selected_unfocused` and `theme.marked_selected_unfocused` draw the unfocused pane's selection.
+- `joinBorders` in `lib/borderJoints.ts` runs as the renderer's post-process function. It reads the frame's characters through `withBuffers` and joins the lines in `theme.border`, adding arms only. Menus and dialogs register their box with `addLayer`, so their lines never join those under them. Only cells that hold a code point are seen, so `GridView` draws its lines with `setCellWithAlphaBlending` instead of `drawText`, which stores characters outside ASCII as grapheme ids.
+- `App` draws the window border and the version. `Divider` no longer has `joined`, `Flex`, `TableTabs` and `DatabaseFooter` have no border, `Sidebar` has its line on the left, and `SIDEBAR_WIDTH` is 41, since the window draws the sidebar's left line.
 
 ## 0.3.1
 

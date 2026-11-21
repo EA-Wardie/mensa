@@ -1,5 +1,4 @@
 import * as core from "@opentui/core";
-import { version } from "../../package.json";
 import { truncateTableNamed } from "../lib/actions";
 import { rowLimit, theme } from "../lib/config";
 import {
@@ -86,12 +85,9 @@ export class DatabaseFooter {
 	constructor(options: core.BoxOptions) {
 		this._options = options;
 
-		// The grid above draws the top border, joined to its columns.
+		// The grid above draws the top border, joined to its columns, and the
+		// window the bottom one.
 		this._component = new core.BoxRenderable(ctx, {
-			border: ["bottom"],
-			borderColor: theme.border,
-			bottomTitle: ` v${version} `,
-			bottomTitleAlignment: "right",
 			flexDirection: "row",
 			flexShrink: 0,
 			...this._options,

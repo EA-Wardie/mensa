@@ -2,8 +2,9 @@ import type * as core from "@opentui/core";
 import { App } from "./components/App";
 import { ConnectionsScreen } from "./components/ConnectionsScreen";
 import { DatabaseScreen } from "./components/DatabaseScreen";
+import { joinBorders } from "./lib/borderJoints";
 import type { ConnectionConfig } from "./lib/config";
-import { makeApp } from "./lib/context";
+import { ctx, makeApp } from "./lib/context";
 import { connect } from "./lib/session";
 import { registerKeyboardShortcuts } from "./lib/shortcuts";
 import { lastConnection } from "./lib/state";
@@ -26,6 +27,7 @@ function reconnect(): void {
 function main(): void {
 	makeApp((): void => {
 		registerKeyboardShortcuts();
+		ctx.addPostProcessFn(joinBorders);
 
 		const app: core.BoxRenderable = App.make({
 			components: [],

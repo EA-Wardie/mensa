@@ -59,7 +59,7 @@ export class TableSidebar {
 			width: SIDEBAR_WIDTH,
 			height: "100%",
 			flexShrink: 0,
-			border: ["left", "right"],
+			border: ["right"],
 			borderColor: theme.border,
 			...this._options,
 		});
@@ -75,8 +75,6 @@ export class TableSidebar {
 
 	private addHeader(): void {
 		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top"],
-			borderColor: theme.border,
 			flexDirection: "row",
 			justifyContent: "space-between",
 			flexShrink: 0,
@@ -127,13 +125,13 @@ export class TableSidebar {
 			);
 		}
 
-		// The name leaves room for the sidebar's borders, the padding, the dot
+		// The name leaves room for the sidebar's border, the padding, the dot
 		// and its gap, a gap, the divider and the menu button.
 		title.add(
 			new core.TextRenderable(ctx, {
 				content: fitText(
 					`${DATABASE_ICON} ${displayText(connection?.name ?? "")}`,
-					SIDEBAR_WIDTH - 8 - iconWidth(dot),
+					SIDEBAR_WIDTH - 7 - iconWidth(dot),
 				),
 				fg: theme.fg,
 				attributes: core.TextAttributes.BOLD,
@@ -154,7 +152,7 @@ export class TableSidebar {
 			},
 		});
 
-		buttons.add(Divider.make({ vertical: true, joined: true }));
+		buttons.add(Divider.make({ vertical: true }));
 		buttons.add(menu);
 		header.add(buttons);
 

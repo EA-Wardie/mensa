@@ -3,6 +3,7 @@ import { theme } from "../lib/config";
 import {
 	BOTTOM_TEE,
 	CROSS,
+	LEFT_TEE,
 	RIGHT_TEE,
 	SEPARATOR,
 	TOP_TEE,
@@ -49,6 +50,9 @@ const HEADER_HEIGHT: number = 3;
 
 const RULE: string = "─";
 
+// Keeps the colour under a line drawn as a cell.
+const CLEAR: core.RGBA = core.RGBA.fromValues(0, 0, 0, 0);
+
 const SCROLL_STEP_X: number = 4;
 
 // Rows under their column names, drawing only the rows and columns in view,
@@ -65,7 +69,6 @@ export abstract class GridView extends core.Renderable {
 	private _hovered: number | null = null;
 	private _mouseY: number | null = null;
 	// A rule as wide as the grid, kept until the width changes.
-	private _rule: string = "";
 	protected _offset: Position = { x: 0, y: 0 };
 
 	constructor(options: core.RenderableOptions<GridView>) {
@@ -376,15 +379,28 @@ export abstract class GridView extends core.Renderable {
 		buffer.drawText(text, x, y, this.messageColor());
 	}
 
-	// Full width, meeting the parent's right border with a tee. The header and
-	// the rows then draw the column joins over them.
+	// Full width, meeting the lines on either side with tees. The header and
+	// the rows then draw the column joins over them. The left tee is drawn
+	// here, since the horizontal scrollbar's thumb tints the rule's first cell,
+	// which BorderJoints then can't see.
 	private drawRule(buffer: core.OptimizedBuffer, y: number): void {
-		if (this._rule.length !== this.width) {
-			this._rule = RULE.repeat(this.width);
+		for (let x: number = this.screenX; x < this.screenX + this.width; x++) {
+			this.drawLine(buffer, RULE, x, y);
 		}
 
-		buffer.drawText(this._rule, this.screenX, y, theme.border);
-		buffer.drawText(RIGHT_TEE, this.screenX + this.width, y, theme.border);
+		this.drawLine(buffer, LEFT_TEE, this.screenX - 1, y);
+		this.drawLine(buffer, RIGHT_TEE, this.screenX + this.width, y);
+	}
+
+	// Draws a line's character as one cell, which keeps its code point, so
+	// the border joins can read it. Text would hold a grapheme id instead.
+	private drawLine(
+		buffer: core.OptimizedBuffer,
+		char: string,
+		x: number,
+		y: number,
+	): void {
+		buffer.setCellWithAlphaBlending(x, y, char, theme.border, CLEAR);
 	}
 
 	private drawRules(buffer: core.OptimizedBuffer): void {
@@ -446,9 +462,9 @@ export abstract class GridView extends core.Renderable {
 					);
 				}
 
-				buffer.drawText(TOP_TEE, separator, y - 1, theme.border);
-				buffer.drawText(SEPARATOR, separator, y, theme.border);
-				buffer.drawText(join, separator, y + 1, theme.border);
+				this.drawLine(buffer, TOP_TEE, separator, y - 1);
+				this.drawLine(buffer, SEPARATOR, separator, y);
+				this.drawLine(buffer, join, separator, y + 1);
 			},
 		);
 	}
@@ -557,7 +573,7 @@ export abstract class GridView extends core.Renderable {
 							? core.TextAttributes.ITALIC
 							: core.TextAttributes.NONE,
 					);
-					buffer.drawText(SEPARATOR, separator, y, theme.border);
+					this.drawLine(buffer, SEPARATOR, separator, y);
 				},
 			);
 		}
@@ -577,10 +593,10 @@ export abstract class GridView extends core.Renderable {
 			grid,
 			(_column: number, _x: number, separator: number): void => {
 				for (let y: number = from; y < end; y++) {
-					buffer.drawText(SEPARATOR, separator, y, theme.border);
+					this.drawLine(buffer, SEPARATOR, separator, y);
 				}
 
-				buffer.drawText(BOTTOM_TEE, separator, end, theme.border);
+				this.drawLine(buffer, BOTTOM_TEE, separator, end);
 			},
 		);
 	}

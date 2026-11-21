@@ -40,7 +40,7 @@ export const DEFAULT_DOUBLE_CLICK_TIMEOUT: number = 250;
 
 export const CONNECTION_TIMEOUT: number = 10;
 
-export const SIDEBAR_WIDTH: number = 42;
+export const SIDEBAR_WIDTH: number = 41;
 
 export const CONNECTIONS_WIDTH: number = 72;
 
@@ -85,6 +85,8 @@ export const CROSS: string = "┼";
 export const BOTTOM_TEE: string = "┴";
 
 export const RIGHT_TEE: string = "┤";
+
+export const LEFT_TEE: string = "├";
 
 // How strongly a scrollbar's thumb tints the rule it runs along, while it
 // isn't in use and while it is.

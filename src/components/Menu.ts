@@ -1,4 +1,5 @@
 import * as core from "@opentui/core";
+import { addLayer } from "../lib/borderJoints";
 import { theme } from "../lib/config";
 import { MENU_WIDTH } from "../lib/consts";
 import { ctx } from "../lib/context";
@@ -77,23 +78,25 @@ export class Menu {
 		return new this(options)._component;
 	}
 
-	// Below the mouse, or above it when there's no room below.
+	// Below the mouse, or above it when there's no room below, inside the
+	// window's border.
 	private addMenu(): core.BoxRenderable {
 		const { items, x, y }: Options = this._options;
 		const height: number = items.length + 2;
-		const below: boolean = y + 1 + height <= ctx.height;
+		const below: boolean = y + 1 + height <= ctx.height - 1;
 		const menu: core.BoxRenderable = new core.BoxRenderable(ctx, {
 			width: MENU_WIDTH,
 			backgroundColor: theme.surface,
 			border: true,
 			borderColor: theme.border,
 			position: "absolute",
-			left: clamp(x, 0, Math.max(0, ctx.width - MENU_WIDTH)),
-			top: Math.max(0, below ? y + 1 : y - height),
+			left: clamp(x, 1, Math.max(1, ctx.width - 1 - MENU_WIDTH)),
+			top: Math.max(1, below ? y + 1 : y - height),
 			zIndex: 101,
 		});
 
 		this._component.add(menu);
+		addLayer(menu);
 
 		return menu;
 	}

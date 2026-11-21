@@ -31,12 +31,12 @@ export class Sidebar {
 			height: "100%",
 			flexShrink: 0,
 			flexDirection: "column",
-			border: ["right"],
+			border: ["left"],
 			borderColor: theme.border,
 		});
 
 		const header: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
+			border: ["bottom"],
 			borderColor: theme.border,
 			flexDirection: "row",
 			justifyContent: "space-between",
@@ -75,7 +75,7 @@ export class Sidebar {
 		scroll.horizontalScrollBar.focusable = false;
 
 		const footer: core.BoxRenderable = new core.BoxRenderable(ctx, {
-			border: ["top", "bottom"],
+			border: ["top"],
 			borderColor: theme.border,
 			flexDirection: "row",
 			columnGap: 1,

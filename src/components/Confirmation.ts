@@ -1,4 +1,5 @@
 import * as core from "@opentui/core";
+import { addLayer } from "../lib/borderJoints";
 import { theme } from "../lib/config";
 import { CANCEL_ICON, CONFIRM_ICON } from "../lib/consts";
 import { ctx } from "../lib/context";
@@ -45,6 +46,7 @@ export class Confirmation {
 		});
 
 		this._component.add(this._dialog);
+		addLayer(this._dialog);
 		this.addText(this._options.heading, core.TextAttributes.BOLD);
 		this.addText(this._options.description);
 		this.addFooter();
