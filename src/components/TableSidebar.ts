@@ -174,6 +174,8 @@ export class TableSidebar {
 			label: (table: string): string => `󰓫 ${table}`,
 			bold: (table: string): boolean => $openTables.get().includes(table),
 			focused: (): boolean => $focusedPane.get() === "tables",
+			// On the sidebar's line, beside the grid.
+			ruleScrollBar: true,
 			// A click on the list focuses it, before a double click opens a
 			// table and focuses its rows.
 			onMouseDown: (): void => {

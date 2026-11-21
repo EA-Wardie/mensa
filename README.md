@@ -170,7 +170,7 @@ danger = "#dc2626"
 warning = "#eab308"  # the primary key icon, #a16207 by default on a light bg
 accent = "#0369a1"  # marked rows
 # surface defaults to an opaque bg
-# scrollbar, the grid's scrollbar thumbs, blended faintly over the borders, defaults to fg
+# scrollbar, the scrollbar thumbs blended faintly over the lines, defaults to fg
 
 # JSON in the row view. These are the defaults on a dark bg, and
 # #0A3069, #0550AE and #CF222E on a light one (or a dark fg with a transparent bg).
