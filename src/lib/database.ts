@@ -16,6 +16,7 @@ import {
 	type EditorTarget,
 	type LoadedTable,
 	type QueryResult,
+	type ResultEdit,
 	type Sort,
 	setEntry,
 	type TableData,
@@ -102,11 +103,23 @@ export interface RowChange {
 // A loaded row, by its index into the rows array it was loaded in.
 export type RowTarget = Pick<EditorTarget, "table" | "rows" | "row">;
 
-// A row a write can match by its primary key.
-interface MatchedRow {
-	data: LoadedTable;
-	// The value the loaded row has in a column.
-	value: (name: string) => Value;
+// The rows a save matches a row in by its primary key.
+interface EditedRows {
+	meta: TableMeta;
+	// The table column each value of a row is, or null for an expression.
+	sources: (string | null)[];
+	// Reads a quoted column of the nth value as the rows show it.
+	asShown: (column: string, index: number) => string;
+	rows: Value[][];
+	// The connection the write runs on.
+	sql: SQL;
+	// Whether a write also matches the shown values of the row's other
+	// columns, as text, which a query's rows need, since a table joined to
+	// itself names both sides' columns as the one table's.
+	guarded: boolean;
+	// Puts the row the database stored in place of the loaded one, unless the
+	// rows were replaced meanwhile.
+	replace: (row: number, values: Value[]) => void;
 }
 
 export interface OpenedClient {
@@ -140,6 +153,12 @@ interface Dialect {
 	) => Promise<TypeKind[]>;
 	// Whether a result column holds raw bytes rather than text, shown as hex.
 	resultHex: (column: SQL.ResultColumn) => boolean;
+	// The table a query's rows can be saved to, or why they can't be.
+	resultEdit: (
+		sql: SQL,
+		schema: string,
+		columns: SQL.ResultColumn[],
+	) => Promise<ResultEdit | string>;
 	// The placeholder for the nth parameter, which sets or matches a column.
 	param: (index: number, column: ColumnMeta) => string;
 	// Whether UPDATE and DELETE can return rows, or MySQL's count is read.
@@ -227,6 +246,9 @@ const CLOSED: string = "The connection is closed.";
 
 const ROW_NOT_FOUND: string =
 	"The row wasn't found. It may have been changed or deleted, so reload the table.";
+
+const SHOWN_ROW_NOT_FOUND: string =
+	"The row wasn't found with the values shown. It may have changed, or the query may join the table to itself, so run it again.";
 
 // The table's columns in order, with the primary key in key order. A table
 // that can't be saved says why.
@@ -489,6 +511,129 @@ async function postgresResultKinds(
 
 	return columns.map(
 		(column: SQL.ResultColumn): TypeKind => known.get(column.type) ?? "other",
+	);
+}
+
+interface PostgresAttributeRow {
+	relation: string;
+	schema: string;
+	number: number;
+	name: string;
+}
+
+// The result names each column's table by OID and its column by number, so
+// aliases don't hide them. Its rows can be saved when every column of a table
+// comes from the same one, in the schema, with its whole primary key among
+// them. Other columns, such as expressions, and a column shown again are read
+// only.
+async function postgresResultEdit(
+	sql: SQL,
+	schema: string,
+	columns: SQL.ResultColumn[],
+): Promise<ResultEdit | string> {
+	const tables: Set<number | string> = new Set<number | string>(
+		columns
+			.map((column: SQL.ResultColumn): number | string => column.table)
+			.filter((table: number | string): boolean => table !== 0),
+	);
+	const [oid]: (number | string)[] = [...tables];
+
+	if (oid === undefined) {
+		return "The rows don't come from a table, so they can't be edited.";
+	}
+
+	if (tables.size > 1) {
+		return "The rows come from more than one table, so they can't be edited.";
+	}
+
+	// Passed as text, since an OID can be past the largest int4.
+	const rows: PostgresAttributeRow[] = await sql`
+		SELECT
+			c.relname::text AS relation,
+			n.nspname::text AS schema,
+			a.attnum::int AS number,
+			a.attname::text AS name
+		FROM pg_catalog.pg_class c
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+		JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+		WHERE c.oid = ${String(oid)}::oid AND a.attnum > 0 AND NOT a.attisdropped
+	`;
+	const relation: PostgresAttributeRow | undefined = rows[0];
+
+	if (!relation) {
+		return "The table couldn't be read, such as one made in an open transaction, so the rows can't be edited.";
+	}
+
+	if (relation.schema !== schema) {
+		return `The rows come from ${relation.schema}.${relation.relation}, outside the ${schema} schema, so they can't be edited.`;
+	}
+
+	const names: Map<number, string> = new Map<number, string>(
+		rows.map((row: PostgresAttributeRow): [number, string] => [
+			row.number,
+			row.name,
+		]),
+	);
+	const shown: Set<string> = new Set<string>();
+	const sources: (string | null)[] = columns.map(
+		(column: SQL.ResultColumn): string | null => {
+			const name: string | undefined =
+				column.table === oid ? names.get(column.number ?? 0) : undefined;
+
+			if (name === undefined || shown.has(name)) {
+				return null;
+			}
+
+			shown.add(name);
+
+			return name;
+		},
+	);
+	const meta: TableMeta = await describePostgres(
+		sql,
+		schema,
+		relation.relation,
+	);
+	const missing: string[] = meta.primaryKey.filter(
+		(key: string): boolean => !shown.has(key),
+	);
+
+	if (meta.readOnly !== null) {
+		return meta.readOnly;
+	}
+
+	if (missing.length) {
+		return `The rows don't include the primary key ${missing.join(", ")}, so they can't be edited.`;
+	}
+
+	return {
+		table: relation.relation,
+		sources: sources,
+		meta: { ...meta, columns: shownBooleans(meta.columns) },
+	};
+}
+
+// A query shows a boolean as t or f, where a table casts it to true or false,
+// so its choices are t and f, labelled as the table shows them.
+function shownBooleans(
+	columns: Map<string, ColumnMeta>,
+): Map<string, ColumnMeta> {
+	return new Map<string, ColumnMeta>(
+		[...columns].map(
+			([name, column]: [string, ColumnMeta]): [string, ColumnMeta] => [
+				name,
+				column.kind === "boolean" && column.edit.as === "choice"
+					? {
+							...column,
+							edit: {
+								as: "choice",
+								options: ["t", "f"],
+								labels: ["true", "false"],
+							},
+						}
+					: column,
+			],
+		),
 	);
 }
 
@@ -771,6 +916,7 @@ const DIALECTS: Record<Driver, Dialect> = {
 		describe: describePostgres,
 		typeKind: (type: string): TypeKind => postgresKind(type, ""),
 		resultKinds: postgresResultKinds,
+		resultEdit: postgresResultEdit,
 		// bytea's text is already hex.
 		resultHex: (): boolean => false,
 		// Values are text, so they're read as the column's type. A parameter
@@ -793,6 +939,10 @@ const DIALECTS: Record<Driver, Dialect> = {
 			_sql: SQL,
 			columns: SQL.ResultColumn[],
 		): Promise<TypeKind[]> => columns.map(mysqlResultKind),
+		// Results name a column by its alias, so it can't be told which column
+		// of a table it is.
+		resultEdit: async (): Promise<string> =>
+			"Query results can only be edited on Postgres.",
 		// Bits and spatial values, which tables show in binary and as WKT.
 		resultHex: (column: SQL.ResultColumn): boolean =>
 			column.type === MYSQL_BIT || column.type === MYSQL_GEOMETRY,
@@ -1086,38 +1236,139 @@ function matchKey(
 		.join(" AND ");
 }
 
-// The loaded row a write matches by its primary key, or why it can't.
-function matchRow(target: RowTarget): MatchedRow | string {
-	const data: TableData | undefined = $tableData.get()[target.table];
+// The loaded table a row was loaded in, or why its rows can't be written.
+function loadedTable(table: string, rows: Value[][]): LoadedTable | string {
+	const data: TableData | undefined = $tableData.get()[table];
 
-	if (data?.status !== "loaded" || data.rows !== target.rows) {
+	if (data?.status !== "loaded" || data.rows !== rows) {
 		return "The table was reloaded. Open the row again to edit it.";
 	}
 
-	if (data.meta.readOnly !== null) {
-		return data.meta.readOnly;
+	return data.meta.readOnly ?? data;
+}
+
+// The rows a save matches a row in: a loaded table's, or a query's results
+// that come from one table, saved on the query tabs' own connection, so a
+// transaction the tab has open sees the write, and its locks don't block it.
+// Gives the rows, or why they can't be saved.
+function editedRows(
+	current: Client,
+	target: EditorTarget,
+): EditedRows | string {
+	const { tab }: EditorTarget = target;
+
+	if (tab.kind === "table") {
+		const data: LoadedTable | string = loadedTable(target.table, target.rows);
+
+		if (typeof data === "string") {
+			return data;
+		}
+
+		return {
+			meta: data.meta,
+			sources: data.columns,
+			asShown: (column: string, index: number): string =>
+				current.dialect.asText(column, data.types[index] ?? ""),
+			rows: data.rows,
+			sql: current.sql,
+			guarded: false,
+			replace: (row: number, values: Value[]): void => {
+				// Rows that were reloaded meanwhile already show the saved values.
+				if (client === current && $tableData.get()[target.table] === data) {
+					setEntry($tableData, target.table, {
+						...data,
+						rows: data.rows.with(row, values),
+					});
+				}
+			},
+		};
 	}
 
-	const { columns, primaryKey }: TableMeta = data.meta;
-	const original: Value[] | undefined = data.rows[target.row];
+	const result: QueryResult | undefined = $queryResults.get()[tab.id];
 
+	if (result?.status !== "rows" || result.rows !== target.rows) {
+		return "The query ran again. Open the row again to edit it.";
+	}
+
+	if (typeof result.edit === "string") {
+		return result.edit;
+	}
+
+	const { meta, sources }: ResultEdit = result.edit;
+
+	return (
+		meta.readOnly ?? {
+			meta: meta,
+			sources: sources,
+			asShown: postgresShown,
+			rows: result.rows,
+			sql: current.queries,
+			guarded: true,
+			replace: (row: number, values: Value[]): void => {
+				if (client === current && $queryResults.get()[tab.id] === result) {
+					setEntry($queryResults, tab.id, {
+						...result,
+						rows: result.rows.with(row, values),
+					});
+				}
+			},
+		}
+	);
+}
+
+// Gives the value a row has in a table column, for matching it by its
+// primary key, or why it can't be matched.
+function matchRow(
+	meta: TableMeta,
+	sources: (string | null)[],
+	original: Value[] | undefined,
+): ((name: string) => Value) | string {
 	if (
 		!original ||
-		!primaryKey.every((key: string): boolean => columns.has(key))
+		!meta.primaryKey.every(
+			(key: string): boolean => meta.columns.has(key) && sources.includes(key),
+		)
 	) {
 		return "The row can't be matched by its primary key.";
 	}
 
-	return {
-		data: data,
-		value: (name: string): Value =>
-			original[data.columns.indexOf(name)] ?? null,
-	};
+	return (name: string): Value => original[sources.indexOf(name)] ?? null;
+}
+
+// A query's value as its result shows it: the type's output, which a cast to
+// text isn't always, such as t for true. format's %s gives the output, but
+// gives NULL as empty text.
+function postgresShown(column: string): string {
+	return `CASE WHEN ${column} IS NULL THEN NULL ELSE format('%s', ${column}) END`;
+}
+
+// Matches the row's columns outside its primary key by the values shown.
+// Only a query's rows are matched so, which are only edited on Postgres.
+function matchShown(
+	edited: EditedRows,
+	quote: (name: string) => string,
+	params: Value[],
+	original: Value[],
+): string[] {
+	return edited.sources.flatMap(
+		(source: string | null, index: number): string[] => {
+			if (source === null || edited.meta.primaryKey.includes(source)) {
+				return [];
+			}
+
+			params.push(original[index] ?? null);
+
+			return [
+				`${edited.asShown(quote(source), index)} IS NOT DISTINCT FROM $${params.length}::text`,
+			];
+		},
+	);
 }
 
 // Saves the changed values of a loaded row, matched by its primary key, and
 // puts the row the database stored in place of the loaded one, so triggers and
-// the database's own formatting show. Resolves to an error message, or null.
+// the database's own formatting show. A query's expression columns keep their
+// values. Resolves to an error message, or null.
 export async function updateRow(
 	target: EditorTarget,
 	changes: RowChange[],
@@ -1128,15 +1379,25 @@ export async function updateRow(
 		return CLOSED;
 	}
 
-	const matched: MatchedRow | string = matchRow(target);
+	const edited: EditedRows | string = editedRows(current, target);
 
-	if (typeof matched === "string") {
-		return matched;
+	if (typeof edited === "string") {
+		return edited;
 	}
 
-	const { data, value: oldValue }: MatchedRow = matched;
-	const { sql, dialect, schema }: Client = current;
-	const { meta }: LoadedTable = data;
+	const { meta, sources, rows, sql }: EditedRows = edited;
+	const original: Value[] | undefined = rows[target.row];
+	const oldValue: ((name: string) => Value) | string = matchRow(
+		meta,
+		sources,
+		original,
+	);
+
+	if (typeof oldValue === "string" || !original) {
+		return typeof oldValue === "string" ? oldValue : ROW_NOT_FOUND;
+	}
+
+	const { dialect, schema }: Client = current;
 	const params: Value[] = [];
 
 	if (
@@ -1160,20 +1421,34 @@ export async function updateRow(
 			assign(dialect, meta, params, change.column, change.value),
 		)
 		.join(", ");
-	const where: string = matchKey(dialect, meta, params, oldValue);
-	const values: string = selectList(dialect, data.columns, data.types);
+	const where: string = [
+		matchKey(dialect, meta, params, oldValue),
+		...(edited.guarded
+			? matchShown(edited, dialect.quote, params, original)
+			: []),
+	].join(" AND ");
+	// The row's columns of the table, read back in their order.
+	const saved: number[] = sources.flatMap(
+		(source: string | null, index: number): number[] =>
+			source === null ? [] : [index],
+	);
+	const values: string = saved
+		.map((index: number): string =>
+			edited.asShown(dialect.quote(sources[index] ?? ""), index),
+		)
+		.join(", ");
 	let updated: Value[] | undefined;
 
 	try {
 		if (dialect.returning) {
-			const rows: Value[][] = await (sql
+			const returned: Value[][] = await (sql
 				.unsafe(
 					`UPDATE ${table} SET ${set} WHERE ${where} RETURNING ${values}`,
 					params,
 				)
 				.values() as Promise<Value[][]>);
 
-			updated = rows[0];
+			updated = returned[0];
 		} else {
 			// MySQL counts the rows that changed rather than the ones that
 			// matched, so the row is selected again by its new key to tell it was
@@ -1186,11 +1461,11 @@ export async function updateRow(
 			params.length = 0;
 
 			const key: string = matchKey(dialect, meta, params, newValue);
-			const rows: Value[][] = await (sql
+			const selected: Value[][] = await (sql
 				.unsafe(`SELECT ${values} FROM ${table} WHERE ${key}`, params)
 				.values() as Promise<Value[][]>);
 
-			updated = rows[0];
+			updated = selected[0];
 		}
 	} catch (error) {
 		logError(error);
@@ -1199,22 +1474,19 @@ export async function updateRow(
 	}
 
 	if (!updated) {
-		return ROW_NOT_FOUND;
+		return edited.guarded ? SHOWN_ROW_NOT_FOUND : ROW_NOT_FOUND;
 	}
 
-	const latest: TableData | undefined = $tableData.get()[target.table];
+	const stored: Value[] = updated;
+	let next: number = 0;
 
-	// Rows that were reloaded meanwhile already show the saved values.
-	if (client === current && latest === data) {
-		const rows: Value[][] = data.rows.slice();
-
-		rows[target.row] = updated;
-
-		setEntry($tableData, target.table, {
-			...data,
-			rows: rows,
-		});
-	}
+	edited.replace(
+		target.row,
+		sources.map(
+			(source: string | null, index: number): Value =>
+				source === null ? (original[index] ?? null) : (stored[next++] ?? null),
+		),
+	);
 
 	return null;
 }
@@ -1229,13 +1501,22 @@ export async function deleteRow(target: RowTarget): Promise<string | null> {
 		return CLOSED;
 	}
 
-	const matched: MatchedRow | string = matchRow(target);
+	const data: LoadedTable | string = loadedTable(target.table, target.rows);
 
-	if (typeof matched === "string") {
-		return matched;
+	if (typeof data === "string") {
+		return data;
 	}
 
-	const { data, value }: MatchedRow = matched;
+	const value: ((name: string) => Value) | string = matchRow(
+		data.meta,
+		data.columns,
+		data.rows[target.row],
+	);
+
+	if (typeof value === "string") {
+		return value;
+	}
+
 	const { sql, dialect, schema }: Client = current;
 	const params: Value[] = [];
 	const table: string = qualified(dialect, schema, target.table);
@@ -1359,7 +1640,7 @@ function errorPosition(error: unknown, text: string): TextPosition | null {
 // What a run shows: the last statement that returned columns, or else the
 // last statement, with the rows every statement wrote.
 async function showResult(
-	{ sql, dialect, typeKinds }: Client,
+	{ sql, dialect, schema, typeKinds }: Client,
 	results: RawResult[],
 	ms: number,
 ): Promise<QueryResult> {
@@ -1385,13 +1666,20 @@ async function showResult(
 	}
 
 	const hex: boolean[] = columns.map(dialect.resultHex);
-	const kinds: TypeKind[] = await dialect
-		.resultKinds(sql, columns, typeKinds)
-		.catch((error: unknown): TypeKind[] => {
+	const [kinds, edit]: [TypeKind[], ResultEdit | string] = await Promise.all([
+		dialect
+			.resultKinds(sql, columns, typeKinds)
+			.catch((error: unknown): TypeKind[] => {
+				logError(error);
+
+				return columns.map((): TypeKind => "other");
+			}),
+		dialect.resultEdit(sql, schema, columns).catch((error: unknown): string => {
 			logError(error);
 
-			return columns.map((): TypeKind => "other");
-		});
+			return `Could not read the rows' table, so they can't be edited: ${errorMessage(error)}`;
+		}),
+	]);
 
 	return {
 		status: "rows",
@@ -1407,6 +1695,7 @@ async function showResult(
 			),
 		total: shown.length,
 		ms: ms,
+		edit: edit,
 	};
 }
 

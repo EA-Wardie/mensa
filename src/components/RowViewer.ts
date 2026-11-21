@@ -10,7 +10,7 @@ import {
 	VIEW_MAX_LENGTH,
 } from "../lib/consts";
 import { ctx } from "../lib/context";
-import { editRow } from "../lib/editor";
+import { canEditRows, editRow } from "../lib/editor";
 import {
 	displayLines,
 	displayText,
@@ -276,9 +276,10 @@ export class RowViewer {
 		});
 	}
 
-	// Only a table's rows can be edited.
+	// A table's rows can be edited, and a query's when they come from one table
+	// with its primary key.
 	private addFooter(footer: core.BoxRenderable): void {
-		if (this._target.tab.kind === "table") {
+		if (canEditRows()) {
 			footer.add(
 				Button.make({
 					label: `${EDIT_ICON} Edit`,

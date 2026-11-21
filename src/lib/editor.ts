@@ -1,35 +1,105 @@
 import { Confirmation } from "../components/Confirmation";
 import {
-	$activeTable,
+	$activeTab,
 	$editor,
 	$editorDirty,
+	$notice,
+	$queryResults,
 	$tableData,
 	$viewer,
 	type EditorTarget,
-	type LoadedTable,
+	type QueryResult,
+	type Tab,
 	type TableData,
+	type TableMeta,
+	type Value,
 } from "./store";
-import { selectRow } from "./tabs";
 
-export function isSameRow(a: EditorTarget, b: EditorTarget): boolean {
-	return a.table === b.table && a.rows === b.rows && a.row === b.row;
+// The rows the editor edits: a table's loaded rows, or a query's results that
+// come from one table.
+export interface EditorData {
+	// The table the rows are saved to.
+	table: string;
+	// The rows' column names, which label the fields.
+	columns: string[];
+	// The table column each is, or null for one that isn't saved, such as an
+	// expression in a query.
+	sources: (string | null)[];
+	rows: Value[][];
+	meta: TableMeta;
 }
 
-// Opens a row of the active table in the editor, focused on the column. The
-// row the editor already has only moves the focus, keeping its edits, and
-// another row asks first when the open one has unsaved changes.
+export function isSameRow(a: EditorTarget, b: EditorTarget): boolean {
+	return a.tab === b.tab && a.rows === b.rows && a.row === b.row;
+}
+
+// The tab's rows the editor can open, or why a query's can't be edited, or
+// null while there are none.
+function tabRows(tab: Tab): EditorData | string | null {
+	if (tab.kind === "table") {
+		const data: TableData | undefined = $tableData.get()[tab.table];
+
+		return data?.status === "loaded"
+			? {
+					table: tab.table,
+					columns: data.columns,
+					sources: data.columns,
+					rows: data.rows,
+					meta: data.meta,
+				}
+			: null;
+	}
+
+	const result: QueryResult | undefined = $queryResults.get()[tab.id];
+
+	if (result?.status !== "rows") {
+		return null;
+	}
+
+	if (typeof result.edit === "string") {
+		return result.edit;
+	}
+
+	return {
+		table: result.edit.table,
+		columns: result.columns,
+		sources: result.edit.sources,
+		rows: result.rows,
+		meta: result.edit.meta,
+	};
+}
+
+// Whether the active tab's rows can be opened in the editor, for the Edit
+// buttons and menu items.
+export function canEditRows(): boolean {
+	const tab: Tab | null = $activeTab.get();
+	const data: EditorData | string | null = tab === null ? null : tabRows(tab);
+
+	return data !== null && typeof data !== "string";
+}
+
+// Opens a row of the active tab in the editor, focused on the column. The row
+// the editor already has only moves the focus, keeping its edits, and another
+// row asks first when the open one has unsaved changes. A query's rows that
+// can't be edited say why in the footer.
 export function editRow(row: number, column: string | null): void {
-	const table: string | null = $activeTable.get();
-	const data: TableData | undefined =
-		table === null ? undefined : $tableData.get()[table];
+	const tab: Tab | null = $activeTab.get();
+	const data: EditorData | string | null = tab === null ? null : tabRows(tab);
 	const editing: EditorTarget | null = $editor.get();
 
-	if (table === null || data?.status !== "loaded" || !data.rows[row]) {
+	if (typeof data === "string") {
+		$notice.set(data);
+
+		return;
+	}
+
+	if (tab === null || data === null || !data.rows[row]) {
 		return;
 	}
 
 	const target: EditorTarget = {
-		table: table,
+		tab: tab,
+		table: data.table,
 		rows: data.rows,
 		row: row,
 		column: column,
@@ -41,8 +111,8 @@ export function editRow(row: number, column: string | null): void {
 		return;
 	}
 
+	// The grid showing the rows selects the row.
 	confirmDiscard((): void => {
-		selectRow(row, table);
 		$viewer.set(null);
 		$editor.set(target);
 	});
@@ -54,17 +124,14 @@ export function closeEditor(): void {
 }
 
 // The editor's row index only means something for the rows it was opened on,
-// so it stays open while its table is shown with those same rows. A reload,
-// a sort, a saved row, closing the tab or the connection all replace them.
-// Gives the table's data while the target is current, or else null.
-export function editorData(target: EditorTarget): LoadedTable | null {
-	const data: TableData | undefined = $tableData.get()[target.table];
+// so it stays open while its tab is shown with those same rows. A reload, a
+// sort, a saved row, a query run again, closing the tab or the connection all
+// replace them. Gives the rows while the target is current, or else null.
+export function editorData(target: EditorTarget): EditorData | null {
+	const data: EditorData | string | null =
+		$activeTab.get() === target.tab ? tabRows(target.tab) : null;
 
-	return $activeTable.get() === target.table &&
-		data?.status === "loaded" &&
-		data.rows === target.rows
-		? data
-		: null;
+	return typeof data === "object" && data?.rows === target.rows ? data : null;
 }
 
 function closeIfStale(): void {
@@ -76,7 +143,8 @@ function closeIfStale(): void {
 }
 
 $tableData.listen(closeIfStale);
-$activeTable.listen(closeIfStale);
+$queryResults.listen(closeIfStale);
+$activeTab.listen(closeIfStale);
 
 // Closes the editor and runs an action that would leave its row, asking first
 // when it has unsaved changes. Closing it first matters when it has none, since

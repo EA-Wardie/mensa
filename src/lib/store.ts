@@ -86,9 +86,21 @@ export type TableData =
 
 export type LoadedTable = Extract<TableData, { status: "loaded" }>;
 
-// The row the editor has open. rows is the loaded array row indexes into, so
-// a reload, which replaces it, shows the row is gone.
+// What lets a query's rows be edited: the one table its columns come from,
+// whose primary key they hold.
+export interface ResultEdit {
+	table: string;
+	// The table column each result column is, or null for an expression.
+	sources: (string | null)[];
+	meta: TableMeta;
+}
+
+// The row the editor has open, of a table or a query's results. tab is the
+// tab it was opened from, compared by reference, and rows the loaded array
+// row indexes into, so a reload, which replaces it, shows the row is gone.
 export interface EditorTarget {
+	tab: Tab;
+	// The table the row is saved to.
 	table: string;
 	rows: Value[][];
 	row: number;
@@ -128,6 +140,8 @@ export type QueryResult =
 			rows: Value[][];
 			total: number;
 			ms: number;
+			// What lets the rows be edited, or why they can't be.
+			edit: ResultEdit | string;
 	  }
 	| {
 			status: "done";

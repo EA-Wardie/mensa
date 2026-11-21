@@ -1,6 +1,7 @@
 import type { MenuItem } from "../components/Menu";
 import { copyToClipboard } from "./actions";
-import { COPY_ICON, VIEW_ICON } from "./consts";
+import { COPY_ICON, EDIT_ICON, VIEW_ICON } from "./consts";
+import { editRow } from "./editor";
 import { rowAsCsv, rowAsJson, rowsAsCsv, rowsAsJson } from "./export";
 import type { GridSource } from "./grid";
 import { SHORTCUTS, shortcutLabel } from "./shortcuts";
@@ -14,6 +15,18 @@ export function viewRowItem(row: number): MenuItem {
 		shortcut: shortcutLabel(SHORTCUTS.viewRow),
 		onSelect: (): void => {
 			viewRow(row, null);
+		},
+	};
+}
+
+// A table's E edits its row, while a query's edits its SQL, so only a table's
+// item shows the shortcut.
+export function editRowItem(row: number, shortcut: boolean): MenuItem {
+	return {
+		label: `${EDIT_ICON} Edit`,
+		...(shortcut ? { shortcut: shortcutLabel(SHORTCUTS.editRow) } : {}),
+		onSelect: (): void => {
+			editRow(row, null);
 		},
 	};
 }

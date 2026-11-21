@@ -24,6 +24,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Marking several rows to copy them together.
 - A read only row view with pretty printed, highlighted JSON.
 - A row editor that saves only the changed columns, matched by primary key.
+- Editing Postgres query results whose columns come from one table, with its primary key.
 - Copying a cell, a row or the marked rows as CSV or JSON, and copying table and column names.
 - Deleting rows, and truncating or dropping tables, after confirming.
 - Query tabs with a SQL editor and a results grid, on their own connection, so transactions last across runs.
@@ -35,6 +36,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Inserts and other changes beyond editing and deleting rows are made with a query.
 - Editing on Postgres needs version 12 or later.
 - Views and tables without a primary key are read only. So are generated columns and MySQL binary, bit and spatial values.
+- MySQL query results are read only, as are results from several tables or without the table's primary key.
 - Values are shown as the database formats them as text. Binary is shown as hex.
 - Truncating or dropping a table that others reference fails with the database's error.
 
@@ -53,7 +55,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 | `Space` | Tables | Mark or unmark the selected row, then select the next |
 | `Escape` | Tables | Close the row view, or clear the marks, or the selected row |
 | `V` | Tables | View the selected row, in a table or a query tab |
-| `E` | Tables | Edit the selected row, or the SQL in a query tab |
+| `E` | Tables | Edit the selected row of a table, or the SQL in a query tab |
 | `N` | Tables | Open a new query tab |
 | `R` | Tables | Reload the active table, or rerun the active query |
 | `Ctrl+R` | Tables | List the tables again |
@@ -81,7 +83,7 @@ Mouse controls:
 - The footer's buttons refresh, truncate or close the active tab.
 - Right click for a menu:
   - A row: View, Edit, Delete, Copy cell, and Copy row or the marked rows as CSV or JSON.
-  - A query result row: View and the copies.
+  - A query result row: View, Edit when it can be edited, and the copies.
   - A column header: Copy name.
   - A tab: Copy name, Close and Close all.
   - A table in the sidebar: Refresh, Copy name, Truncate and Delete.

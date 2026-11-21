@@ -24,9 +24,11 @@ import { clearMarks, marksOf, toggleMark } from "../lib/marks";
 import { clamp } from "../lib/math";
 import { copyNameItem } from "../lib/menuItems";
 import {
+	$editor,
 	$focusedPane,
 	$markedRows,
 	$viewer,
+	type EditorTarget,
 	type Value,
 	type ViewerTarget,
 } from "../lib/store";
@@ -38,6 +40,9 @@ export interface Position {
 	x: number;
 	y: number;
 }
+
+// A row the view or the editor has open.
+type RowOfRows = Pick<ViewerTarget & EditorTarget, "rows" | "row">;
 
 // An icon drawn at the end of a column's name, such as its sort.
 export interface HeaderMarker {
@@ -104,7 +109,16 @@ export abstract class GridView extends core.Renderable {
 		this.add(this._vertical);
 		this.add(this._horizontal);
 
-		// Viewing one of these rows selects it, so the selection follows the view.
+		// Viewing or editing one of these rows selects it, so the selection
+		// follows the view and the editor.
+		const follow: (target: RowOfRows | null) => void = (
+			target: RowOfRows | null,
+		): void => {
+			if (target && target.rows === this.source()?.rows) {
+				this.selectRowAt(target.row);
+			}
+		};
+
 		unbindOnDestroy(
 			this,
 			(): void => {
@@ -112,11 +126,8 @@ export abstract class GridView extends core.Renderable {
 					GridView.current = null;
 				}
 			},
-			$viewer.listen((target: ViewerTarget | null): void => {
-				if (target && target.rows === this.source()?.rows) {
-					this.selectRowAt(target.row);
-				}
-			}),
+			$viewer.listen(follow),
+			$editor.listen(follow),
 			$markedRows.listen((): void => {
 				this.requestRender();
 			}),

@@ -2,17 +2,16 @@ import type * as core from "@opentui/core";
 import { deleteRowAt } from "../lib/actions";
 import { DoubleClick } from "../lib/clicks";
 import { theme } from "../lib/config";
-import {
-	DELETE_ICON,
-	EDIT_ICON,
-	SORT_ASC_ICON,
-	SORT_DESC_ICON,
-} from "../lib/consts";
+import { DELETE_ICON, SORT_ASC_ICON, SORT_DESC_ICON } from "../lib/consts";
 import { confirmDiscard, editRow } from "../lib/editor";
 import { type GridSource, gridFor } from "../lib/grid";
 import { unbindOnDestroy } from "../lib/lifetime";
-import { copyMarkedItems, copyRowItems, viewRowItem } from "../lib/menuItems";
-import { SHORTCUTS, shortcutLabel } from "../lib/shortcuts";
+import {
+	copyMarkedItems,
+	copyRowItems,
+	editRowItem,
+	viewRowItem,
+} from "../lib/menuItems";
 import {
 	$activeTable,
 	$activeTableData,
@@ -187,13 +186,7 @@ export class DataGrid extends GridView {
 			y: event.y,
 			items: [
 				viewRowItem(row),
-				{
-					label: `${EDIT_ICON} Edit`,
-					shortcut: shortcutLabel(SHORTCUTS.editRow),
-					onSelect: (): void => {
-						editRow(row, null);
-					},
-				},
+				editRowItem(row, true),
 				"divider",
 				...copyRowItems(data, row, column),
 				...copyMarkedItems(data, this.marks()),

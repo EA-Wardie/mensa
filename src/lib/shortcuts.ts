@@ -255,8 +255,8 @@ export const SHORTCUTS = {
 		description: "Edit the selected row, or the query's SQL",
 		screen: "database",
 		run: (): void => {
-			// A query's rows aren't edited, so E edits its SQL instead. Otherwise
-			// the shown grid is the table's.
+			// A query's rows are edited from their menu and the view, so E edits
+			// its SQL instead. Otherwise the shown grid is the table's.
 			if (QueryView.focusShown()) {
 				return;
 			}
