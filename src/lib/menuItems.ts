@@ -18,11 +18,30 @@ export function viewRowItem(row: number): MenuItem {
 	};
 }
 
-// Copies the row as it was when the menu opened.
-export function copyRowItems(source: GridSource, row: number): MenuItem[] {
+// Copies the row, and the column's cell unless it's NULL, as they were when
+// the menu opened. The cell is copied as the database gave it.
+export function copyRowItems(
+	source: GridSource,
+	row: number,
+	column: string | null,
+): MenuItem[] {
 	const values: Value[] = source.rows[row] ?? [];
+	const cell: Value | undefined =
+		column === null ? undefined : values[source.columns.indexOf(column)];
+	const cellItems: MenuItem[] =
+		typeof cell === "string"
+			? [
+					{
+						label: `${COPY_ICON} Copy cell`,
+						onSelect: (): void => {
+							copyToClipboard(cell);
+						},
+					},
+				]
+			: [];
 
 	return [
+		...cellItems,
 		{
 			label: `${COPY_ICON} Copy row as CSV`,
 			onSelect: (): void => {

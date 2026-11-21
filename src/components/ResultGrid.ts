@@ -93,7 +93,11 @@ export class ResultGrid extends GridView {
 		}
 	}
 
-	protected override onRowMenu(event: core.MouseEvent, row: number): void {
+	protected override onRowMenu(
+		event: core.MouseEvent,
+		row: number,
+		column: string | null,
+	): void {
 		const source: GridSource | null = this._source;
 
 		if (!source) {
@@ -108,7 +112,7 @@ export class ResultGrid extends GridView {
 			items: [
 				viewRowItem(row),
 				"divider",
-				...copyRowItems(source, row),
+				...copyRowItems(source, row, column),
 				...copyMarkedItems(source, this.marks()),
 			],
 		});

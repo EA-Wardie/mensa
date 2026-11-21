@@ -2,6 +2,7 @@ import { confirmDiscard } from "./editor";
 import type { GridSource } from "./grid";
 import {
 	$activeTab,
+	$focusedPane,
 	$queryResults,
 	$tableData,
 	$viewer,
@@ -53,6 +54,7 @@ export function viewRow(row: number, column: string | null): void {
 	};
 
 	confirmDiscard((): void => {
+		$focusedPane.set("grid");
 		$viewer.set(target);
 	});
 }

@@ -168,7 +168,11 @@ export class DataGrid extends GridView {
 
 	// Right clicking a row opens its menu, and picks the row unless the editor
 	// is open. The menu acts on the rows it was opened on.
-	protected override onRowMenu(event: core.MouseEvent, row: number): void {
+	protected override onRowMenu(
+		event: core.MouseEvent,
+		row: number,
+		column: string | null,
+	): void {
 		const table: string | null = this._table;
 		const data: TableData | undefined = this._data;
 
@@ -191,7 +195,7 @@ export class DataGrid extends GridView {
 					},
 				},
 				"divider",
-				...copyRowItems(data, row),
+				...copyRowItems(data, row, column),
 				...copyMarkedItems(data, this.marks()),
 				"divider",
 				{

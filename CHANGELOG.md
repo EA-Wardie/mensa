@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.2
+
+### Added
+
+- A focused pane on the database screen: the table sidebar or the rows of the shown tab, table or query. `Up`/`Down` and `K`/`J` move the selection in the focused pane, so rows can be stepped through without opening the row view. `Tab` moves the focus between the panes, and clicking a pane focuses it. The pane without the focus draws its selection faintly, with normal text.
+- The row menu has Copy cell, which copies the value of the cell it was opened on as the database gave it. It's left out for NULL.
+
+### Changed
+
+- Opening a table with `Return` or a double click, viewing a row and `E` in a query tab focus the rows. The sidebar has the focus on connecting and whenever no tab is open.
+
+### Internal
+
+- `$focusedPane` in `lib/store.ts`, set by the shortcuts, clicks, `viewRow` and `QueryView.focusShown`, and back to the tables by a `$activeTab` listener in `lib/tabs.ts`. The `selectUp`/`selectDown` shortcuts replace `tableUp`/`tableDown`, and `focusPane` is `Tab`.
+- `GridView.moveSelection` steps and picks a row, shared with `markSelected`. `GridView.onRowMenu` gets the name of the column under the pointer, and `copyRowItems` takes it for Copy cell. `List` takes a `focused` option. `theme.selected_unfocused` and `theme.marked_selected_unfocused` draw the unfocused pane's selection.
+
 ## 0.3.1
 
 ### Added

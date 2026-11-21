@@ -13,10 +13,12 @@ import { clearMarks } from "./marks";
 import { connect, disconnect } from "./session";
 import { flushState } from "./state";
 import {
+	$activeTab,
 	$connection,
 	$connections,
 	$dialogOpen,
 	$editor,
+	$focusedPane,
 	$screen,
 	$selectedConnection,
 	$selectedTable,
@@ -57,19 +59,13 @@ function quit(): void {
 	});
 }
 
-// Views the shown grid's next row while a row is viewed, which selects it, and
-// otherwise moves the sidebar's table.
-function stepRowOrTable(step: number): void {
-	if ($viewer.get() === null) {
+// Moves the selection in the focused pane: the shown grid's row, which the
+// view follows while a row is viewed, or the sidebar's table.
+function stepSelection(step: number): void {
+	if ($viewer.get() !== null || $focusedPane.get() === "grid") {
+		GridView.current?.moveSelection(step);
+	} else {
 		moveSelection($tables, $selectedTable, step);
-
-		return;
-	}
-
-	const row: number | null = GridView.current?.stepRow(step) ?? null;
-
-	if (row !== null) {
-		viewRow(row, null);
 	}
 }
 
@@ -114,33 +110,48 @@ export const SHORTCUTS = {
 			}
 		},
 	},
-	tableUp: {
+	selectUp: {
 		key: "up",
 		alias: "k",
-		description: "Select the table above, or the row above while viewing one",
+		description: "Select the table or row above, in the focused pane",
 		screen: "database",
 		run: (): void => {
-			stepRowOrTable(-1);
+			stepSelection(-1);
 		},
 	},
-	tableDown: {
+	selectDown: {
 		key: "down",
 		alias: "j",
-		description: "Select the table below, or the row below while viewing one",
+		description: "Select the table or row below, in the focused pane",
 		screen: "database",
 		run: (): void => {
-			stepRowOrTable(1);
+			stepSelection(1);
+		},
+	},
+	// The sidebar keeps the focus while no tab is shown, since there are no
+	// rows to move in.
+	focusPane: {
+		key: "tab",
+		description: "Move the focus between the tables and the rows",
+		screen: "database",
+		run: (): void => {
+			$focusedPane.set(
+				$focusedPane.get() === "tables" && $activeTab.get() !== null
+					? "grid"
+					: "tables",
+			);
 		},
 	},
 	openTable: {
 		key: "return",
-		description: "Open the selected table in a tab",
+		description: "Open the selected table in a tab and focus its rows",
 		screen: "database",
 		run: (): void => {
 			const table: string | null = $selectedTable.get();
 
 			if (table !== null) {
 				openTable(table);
+				$focusedPane.set("grid");
 			}
 		},
 	},

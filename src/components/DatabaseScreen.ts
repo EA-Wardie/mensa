@@ -1,5 +1,6 @@
 import * as core from "@opentui/core";
 import { ctx } from "../lib/context";
+import { $focusedPane } from "../lib/store";
 import { DatabaseFooter } from "./DatabaseFooter";
 import { DataGrid } from "./DataGrid";
 import { Flex } from "./Flex";
@@ -27,6 +28,10 @@ export class DatabaseScreen {
 				flexGrow: 1,
 				flexShrink: 1,
 				width: "auto",
+				// A click anywhere in the tabs, rows or query focuses the rows.
+				onMouseDown: (): void => {
+					$focusedPane.set("grid");
+				},
 				components: [
 					TableTabs.make(),
 					grid,

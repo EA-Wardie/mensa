@@ -172,6 +172,12 @@ export const $tabs = nanostores.atom<readonly Tab[]>([]);
 
 export const $activeTab = nanostores.atom<Tab | null>(null);
 
+// The pane the arrow and vim keys move the selection in: the sidebar's tables,
+// or the shown tab's rows.
+export type Pane = "tables" | "grid";
+
+export const $focusedPane = nanostores.atom<Pane>("tables");
+
 // The open tables, in tab order, for what only cares about tables.
 export const $openTables: nanostores.ReadableAtom<string[]> =
 	nanostores.computed($tabs, (tabs: readonly Tab[]): string[] =>

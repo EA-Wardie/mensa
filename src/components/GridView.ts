@@ -23,6 +23,7 @@ import { clearMarks, marksOf, toggleMark } from "../lib/marks";
 import { clamp } from "../lib/math";
 import { copyNameItem } from "../lib/menuItems";
 import {
+	$focusedPane,
 	$markedRows,
 	$viewer,
 	type Value,
@@ -116,6 +117,9 @@ export abstract class GridView extends core.Renderable {
 			$markedRows.listen((): void => {
 				this.requestRender();
 			}),
+			$focusedPane.listen((): void => {
+				this.requestRender();
+			}),
 		);
 	}
 
@@ -154,7 +158,12 @@ export abstract class GridView extends core.Renderable {
 	// on one.
 	protected onRowClick(_row: number | null, _column: number | null): void {}
 
-	protected onRowMenu(_event: core.MouseEvent, _row: number): void {}
+	// column is the name of the column under the pointer, or null past the last.
+	protected onRowMenu(
+		_event: core.MouseEvent,
+		_row: number,
+		_column: string | null,
+	): void {}
 
 	// Ends a double click, such as when a Ctrl+click marks a row.
 	protected resetClicks(): void {}
@@ -205,12 +214,22 @@ export abstract class GridView extends core.Renderable {
 		}
 
 		toggleMark(rows, selected);
+		this.moveSelection(1);
+	}
 
-		const next: number | null = this.stepRow(1);
+	// Selects the row step rows from the selection, which the view follows
+	// while it's open.
+	public moveSelection(step: number): void {
+		const row: number | null = this.stepRow(step);
 
-		if (next !== null) {
-			this.pickRow(next);
+		if (row !== null) {
+			this.pickRow(row);
 		}
+	}
+
+	// The pane without the focus draws its selection faintly, with normal text.
+	private get hasPaneFocus(): boolean {
+		return $focusedPane.get() === "grid";
 	}
 
 	protected get grid(): Grid | null {
@@ -452,14 +471,16 @@ export abstract class GridView extends core.Renderable {
 			}
 		}
 
-		this.fillRow(
-			buffer,
-			grid,
-			selected,
-			selected !== null && marked.has(selected)
+		const isMarked: boolean = selected !== null && marked.has(selected);
+		const color: core.RGBA = this.hasPaneFocus
+			? isMarked
 				? theme.marked_selected
-				: theme.selected,
-		);
+				: theme.selected
+			: isMarked
+				? theme.marked_selected_unfocused
+				: theme.selected_unfocused;
+
+		this.fillRow(buffer, grid, selected, color);
 	}
 
 	private fillRow(
@@ -505,7 +526,9 @@ export abstract class GridView extends core.Renderable {
 			return;
 		}
 
-		const selected: number | null = this.selectedRow();
+		const inverted: number | null = this.hasPaneFocus
+			? this.selectedRow()
+			: null;
 
 		this.drawRowsEnd(buffer, grid);
 
@@ -517,7 +540,7 @@ export abstract class GridView extends core.Renderable {
 			}
 
 			const y: number = this.screenY + HEADER_HEIGHT + index - this._offset.y;
-			const inverse: boolean = index === selected;
+			const inverse: boolean = index === inverted;
 
 			this.forEachColumn(
 				grid,
@@ -725,7 +748,7 @@ export abstract class GridView extends core.Renderable {
 			event.button === core.MouseButton.RIGHT ? this.bodyRowAt(event) : null;
 
 		if (index !== null) {
-			this.onRowMenu(event, index);
+			this.onRowMenu(event, index, this.columnName(this.columnAt(event.x)));
 		}
 	}
 

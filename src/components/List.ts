@@ -17,6 +17,9 @@ interface Options<T> extends core.RenderableOptions<List<T>> {
 	detail?: (item: T) => string;
 	bold?: (item: T) => boolean;
 	redrawOn?: ReadableAtom<unknown>[];
+	// Whether the list has the focus, true by default. Without it the selected
+	// row is drawn faintly, with normal text.
+	focused?: () => boolean;
 	onActivate: (item: T) => void;
 	// Opens the item's menu at the mouse, after right clicking selects it.
 	onMenu?: (item: T, x: number, y: number) => void;
@@ -70,6 +73,7 @@ export class List<T> extends core.Renderable {
 			this._offset + this.height,
 		);
 		const selected: T | null = this._options.selected.get();
+		const focused: boolean = this._options.focused?.() ?? true;
 
 		for (let index: number = this._offset; index < end; index++) {
 			const item: T | undefined = this._items[index];
@@ -81,7 +85,9 @@ export class List<T> extends core.Renderable {
 			const y: number = this.screenY + index - this._offset;
 			const isSelected: boolean = item === selected;
 			const background: core.RGBA | null = isSelected
-				? theme.selected
+				? focused
+					? theme.selected
+					: theme.selected_unfocused
 				: index === this._hovered
 					? theme.hover
 					: null;
@@ -94,7 +100,7 @@ export class List<T> extends core.Renderable {
 				continue;
 			}
 
-			this.drawItem(buffer, item, y, textWidth, isSelected);
+			this.drawItem(buffer, item, y, textWidth, isSelected && focused);
 		}
 	}
 
