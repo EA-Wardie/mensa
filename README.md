@@ -24,7 +24,7 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 - Marking several rows to copy them together.
 - A read only row view with pretty printed, highlighted JSON.
 - A row editor that saves only the changed columns, matched by primary key.
-- Editing Postgres query results whose columns come from one table, with its primary key.
+- Editing Postgres query results whose columns come from one table, read once, with its primary key.
 - Copying a cell, a row or the marked rows as CSV or JSON, and copying table and column names.
 - Deleting rows, and truncating or dropping tables, after confirming.
 - Query tabs with a SQL editor and a results grid, on their own connection, so transactions last across runs.
@@ -35,8 +35,8 @@ Terminal database client with first party mouse support. Built with OpenTUI on B
 
 - Inserts and other changes beyond editing and deleting rows are made with a query.
 - Editing on Postgres needs version 12 or later.
-- Views and tables without a primary key are read only. So are generated columns and MySQL binary, bit and spatial values.
-- MySQL query results are read only, as are results from several tables or without the table's primary key.
+- Views, tables without a primary key and tables others inherit from are read only. So are generated columns and MySQL binary, bit and spatial values.
+- MySQL query results are read only, as are results from several tables, from a table joined to itself, or without the table's primary key.
 - Values are shown as the database formats them as text. Binary is shown as hex.
 - Truncating or dropping a table that others reference fails with the database's error.
 

@@ -16,6 +16,7 @@ import {
 	$activeTab,
 	$activeTable,
 	$activeTableData,
+	$checkingEdit,
 	$connection,
 	$markedRows,
 	$queryResults,
@@ -156,8 +157,17 @@ export class DatabaseFooter {
 		this._component.add(
 			NoticeText.make({
 				flexShrink: 1,
-				fallback: describeActiveTab,
-				redrawOn: [$activeTab, $activeTableData, $queryResults, $markedRows],
+				fallback: (): string =>
+					$checkingEdit.get()
+						? "Checking whether the rows can be edited…"
+						: describeActiveTab(),
+				redrawOn: [
+					$activeTab,
+					$activeTableData,
+					$queryResults,
+					$markedRows,
+					$checkingEdit,
+				],
 			}),
 		);
 		this._component.add(right);

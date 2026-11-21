@@ -86,12 +86,29 @@ export type TableData =
 
 export type LoadedTable = Extract<TableData, { status: "loaded" }>;
 
+// Where a query's rows come from, as their result names it. The first time a
+// row is edited, it's read further into a ResultEdit.
+export interface ResultOrigin {
+	// The OID of the one table the result's columns come from.
+	table: string;
+	// The number in the table of the column each result column shows, or null
+	// for an expression or a column shown as hex.
+	numbers: (number | null)[];
+	// The statement that returned the rows, whose plan is checked to read the
+	// table once.
+	statement: string;
+}
+
 // What lets a query's rows be edited: the one table its columns come from,
 // whose primary key they hold.
 export interface ResultEdit {
 	table: string;
-	// The table column each result column is, or null for an expression.
+	// The table column each result column saves to, or null for one that
+	// isn't saved: an expression, or a column shown again.
 	sources: (string | null)[];
+	// The table column each result column shows, or null, so a save updates
+	// every copy.
+	shown: (string | null)[];
 	meta: TableMeta;
 }
 
@@ -104,8 +121,8 @@ export interface EditorTarget {
 	table: string;
 	rows: Value[][];
 	row: number;
-	// The column to focus, or null for the first editable one.
-	column: string | null;
+	// The index of the column to focus, or null for the first editable one.
+	column: number | null;
 }
 
 export interface TableTab {
@@ -140,8 +157,8 @@ export type QueryResult =
 			rows: Value[][];
 			total: number;
 			ms: number;
-			// What lets the rows be edited, or why they can't be.
-			edit: ResultEdit | string;
+			// Where the rows come from, or why they can't be edited.
+			edit: ResultOrigin | string;
 	  }
 	| {
 			status: "done";
@@ -280,8 +297,8 @@ export interface ViewerTarget {
 	tab: Tab;
 	rows: Value[][];
 	row: number;
-	// The column to scroll to, or null for the top.
-	column: string | null;
+	// The index of the column to scroll to, or null for the top.
+	column: number | null;
 }
 
 // Set only while the editor is closed.
@@ -302,6 +319,14 @@ export const $editorDirty = nanostores.atom<boolean>(false);
 export const $dialogOpen = nanostores.atom<boolean>(false);
 
 export const $notice = nanostores.atom<string>("");
+
+// Whether an Edit is waiting to learn whether a query's rows can be edited,
+// which the footer says once it takes a moment.
+export const $checkingEdit = nanostores.atom<boolean>(false);
+
+// Counts the query results read for editing, so what shows Edit can hide it
+// once a result is found not to be editable.
+export const $resultEditsRead = nanostores.atom<number>(0);
 
 // A notice stays until the next action, which clears it as it starts.
 export function clearNotice(): void {

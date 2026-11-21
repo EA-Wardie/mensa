@@ -149,6 +149,7 @@ export class RowEditor {
 		this._fields = this._data.columns.map(
 			(column: string, index: number): Field => {
 				const source: string | null = this._data.sources[index] ?? null;
+				const shown: string | null = this._data.shown[index] ?? null;
 				const field: Field = makeField({
 					column: column,
 					meta:
@@ -158,7 +159,12 @@ export class RowEditor {
 					editable: this._readOnly === null,
 					isKey: source !== null && primaryKey.includes(source),
 					...(source === null
-						? { readOnly: "Not a column of the table, so it isn't saved." }
+						? {
+								readOnly:
+									shown === null
+										? "Not a column of the table, so it isn't saved."
+										: `Shows ${displayText(shown)} again, which is saved in its first field.`,
+							}
 						: {}),
 					onChange: (changed: Field): void => {
 						this.updateDirty(changed);
@@ -185,7 +191,12 @@ export class RowEditor {
 			Button.make({
 				label: `${VIEW_ICON} View`,
 				onClick: (): void => {
-					viewRow(this._target.row, this._lastFocused?.column ?? null);
+					viewRow(
+						this._target.row,
+						this._lastFocused === null
+							? null
+							: this._fields.indexOf(this._lastFocused),
+					);
 				},
 			}),
 		);
@@ -247,15 +258,12 @@ export class RowEditor {
 		);
 	}
 
-	// Focuses the column's field, or the first editable one.
-	private focusColumn(column: string | null): void {
-		const editable: Field[] = this.editableFields();
+	// Focuses the field of the column at the index, or the first editable one.
+	private focusColumn(column: number | null): void {
 		const field: Field | undefined =
-			editable.find(
-				(candidate: Field): boolean => candidate.column === column,
-			) ?? editable[0];
+			column === null ? undefined : this._fields[column];
 
-		field?.control?.focus();
+		(field?.control ?? this.editableFields()[0]?.control)?.focus();
 	}
 
 	private cycleFocus(step: number): void {

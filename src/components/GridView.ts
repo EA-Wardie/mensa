@@ -172,11 +172,12 @@ export abstract class GridView extends core.Renderable {
 	// on one.
 	protected onRowClick(_row: number | null, _column: number | null): void {}
 
-	// column is the name of the column under the pointer, or null past the last.
+	// column is the index of the column under the pointer, or null past the
+	// last. Indexes, since a query's columns can share a name.
 	protected onRowMenu(
 		_event: core.MouseEvent,
 		_row: number,
-		_column: string | null,
+		_column: number | null,
 	): void {}
 
 	// Ends a double click, such as when a Ctrl+click marks a row.
@@ -197,7 +198,7 @@ export abstract class GridView extends core.Renderable {
 		double: boolean,
 	): void {
 		if (double || $viewer.get() !== null) {
-			viewRow(row, double ? this.columnName(column) : null);
+			viewRow(row, double ? column : null);
 		} else {
 			this.selectRowAt(row);
 		}
@@ -775,7 +776,7 @@ export abstract class GridView extends core.Renderable {
 			event.button === core.MouseButton.RIGHT ? this.bodyRowAt(event) : null;
 
 		if (index !== null) {
-			this.onRowMenu(event, index, this.columnName(this.columnAt(event.x)));
+			this.onRowMenu(event, index, this.columnAt(event.x));
 		}
 	}
 

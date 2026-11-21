@@ -60,9 +60,10 @@ function quit(): void {
 }
 
 // Moves the selection in the focused pane: the shown grid's row, which the
-// view follows while a row is viewed, or the sidebar's table.
+// view follows while a row is viewed, or the sidebar's table. Viewing a row
+// focuses the rows, and Tab can still move the focus to the sidebar.
 function stepSelection(step: number): void {
-	if ($viewer.get() !== null || $focusedPane.get() === "grid") {
+	if ($focusedPane.get() === "grid") {
 		GridView.current?.moveSelection(step);
 	} else {
 		moveSelection($tables, $selectedTable, step);

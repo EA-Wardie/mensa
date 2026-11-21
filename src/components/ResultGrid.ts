@@ -119,14 +119,14 @@ export class ResultGrid extends GridView {
 		if ($editor.get() === null) {
 			this.clickRow(row, column, double);
 		} else if (double) {
-			editRow(row, this.columnName(column));
+			editRow(row, column);
 		}
 	}
 
 	protected override onRowMenu(
 		event: core.MouseEvent,
 		row: number,
-		column: string | null,
+		column: number | null,
 	): void {
 		const source: GridSource | null = this._source;
 

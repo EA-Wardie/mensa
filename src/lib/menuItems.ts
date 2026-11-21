@@ -31,16 +31,16 @@ export function editRowItem(row: number, shortcut: boolean): MenuItem {
 	};
 }
 
-// Copies the row, and the column's cell unless it's NULL, as they were when
-// the menu opened. The cell is copied as the database gave it.
+// Copies the row, and the cell of the column at the index unless it's NULL,
+// as they were when the menu opened. The cell is copied as the database gave
+// it.
 export function copyRowItems(
 	source: GridSource,
 	row: number,
-	column: string | null,
+	column: number | null,
 ): MenuItem[] {
 	const values: Value[] = source.rows[row] ?? [];
-	const cell: Value | undefined =
-		column === null ? undefined : values[source.columns.indexOf(column)];
+	const cell: Value | undefined = column === null ? undefined : values[column];
 	const cellItems: MenuItem[] =
 		typeof cell === "string"
 			? [
